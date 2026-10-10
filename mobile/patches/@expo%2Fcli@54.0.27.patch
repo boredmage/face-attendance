@@ -1,0 +1,227 @@
+diff --git a/build/src/start/doctor/apple/SimulatorAppPrerequisite.js b/build/src/start/doctor/apple/SimulatorAppPrerequisite.js
+index 886f915e3e031f7aa97d7da89b0f44056d3040d6..65fe49c5387b0afd8b4ba1d70b999829208eae9d 100644
+--- a/build/src/start/doctor/apple/SimulatorAppPrerequisite.js
++++ b/build/src/start/doctor/apple/SimulatorAppPrerequisite.js
+@@ -121,8 +121,10 @@ class SimulatorAppPrerequisite extends _Prerequisite.Prerequisite {
+     async assertImplementation() {
+         const result = await getSimulatorAppIdAsync();
+         if (!result) {
+-            // This error may occur in CI where the users intends to install just the simulators but no Xcode.
+-            throw new _Prerequisite.PrerequisiteCommandError('SIMULATOR_APP', "Can't determine id of Simulator app; the Simulator is most likely not installed on this machine. Run `sudo xcode-select -s /Applications/Xcode.app`");
++            // Xcode 27 no longer ships Simulator.app. Physical-device builds don't need it, so warn
++            // instead of failing; a simulator launch would still fail later with a clear error.
++            _log.warn('Simulator app not found (Xcode 27+?). Continuing: only physical devices will work.');
++            return;
+         }
+         if (result !== 'com.apple.iphonesimulator' && result !== 'com.apple.CoreSimulator.SimulatorTrampoline') {
+             throw new _Prerequisite.PrerequisiteCommandError('SIMULATOR_APP', "Simulator is installed but is identified as '" + result + "'; don't know what that is.");
+diff --git a/static/canary-full/node_modules/react/LICENSE b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/LICENSE
+deleted file mode 100644
+index b93be90515ccd0b9daedaa589e42bf5929693f1f..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/README.md b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/README.md
+deleted file mode 100644
+index 20a855efd3c067a74dff4799c1ff470e3189d231..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-compiler-runtime.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-compiler-runtime.development.js
+deleted file mode 100644
+index 84ceaac6f5558c8f6783fe84a0f6e78953aed2c7..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-compiler-runtime.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-compiler-runtime.production.js
+deleted file mode 100644
+index 4d5ade38f0fd3a5bd481be166924d276aae82965..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-compiler-runtime.profiling.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-compiler-runtime.profiling.js
+deleted file mode 100644
+index 9b93257e37ab256ad01b3c4a3ffc065c145f55a1..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.development.js
+deleted file mode 100644
+index 8dd24a4d7e6e023d8ad336e7ab9d890ae00f1448..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.production.js
+deleted file mode 100644
+index 22ad88648e07b02e4d3f311ade499ba1ac5b7738..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.profiling.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.profiling.js
+deleted file mode 100644
+index f9e8942f4d6742eb1943b239809e3927143800b4..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.react-server.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.react-server.development.js
+deleted file mode 100644
+index 9052d7ec6948b2957a29c20981d0e01a321e48df..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.react-server.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-dev-runtime.react-server.production.js
+deleted file mode 100644
+index 0664121996a97e23e0e3585e7e2404200f43c2a5..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-runtime.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-runtime.development.js
+deleted file mode 100644
+index 2a821e168fbd14bdb5b2c446337a8a383d4c2f63..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-runtime.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-runtime.production.js
+deleted file mode 100644
+index 12d60887f08e64712ec20a40154d521fe7740a7a..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-runtime.profiling.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-runtime.profiling.js
+deleted file mode 100644
+index 68a28d6ad6b10a967ff8ca51f41f503a7cab80bd..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-runtime.react-server.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-runtime.react-server.development.js
+deleted file mode 100644
+index 8d8c4f37ad3088b6e061a48adac7cd85c25da8e9..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react-jsx-runtime.react-server.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react-jsx-runtime.react-server.production.js
+deleted file mode 100644
+index 486facb52101f965fd3c74e03c4c4299006cdcd9..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react.development.js
+deleted file mode 100644
+index 8a7e479272ff4ac567bb4f2f0fbca64c57bb5a75..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react.production.js
+deleted file mode 100644
+index 070f73095df083229ccb225b97af6e6d229c3d1c..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react.react-server.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react.react-server.development.js
+deleted file mode 100644
+index a5fcca546458eb3c13389e11b1272672229f9203..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/cjs/react.react-server.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/cjs/react.react-server.production.js
+deleted file mode 100644
+index 465e267b3a6c52b690b829d641355a37034a563e..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/compiler-runtime.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/compiler-runtime.js
+deleted file mode 100644
+index ab6aabb0a98a339ea0c65ed8e59e255f23775f26..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/index.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/index.js
+deleted file mode 100644
+index d830d7a2f9f7f0649af7f5b6727206b2bbd4f93b..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/jsx-dev-runtime.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/jsx-dev-runtime.js
+deleted file mode 100644
+index 0a80857d2d65a01ad35d2b11218db6d796a5e104..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/jsx-dev-runtime.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/jsx-dev-runtime.react-server.js
+deleted file mode 100644
+index d11e6e82d068da6187e5770abfbd9666842f3dda..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/jsx-runtime.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/jsx-runtime.js
+deleted file mode 100644
+index 8679b72159b9cc249283d4a935c59d4ebd592864..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/jsx-runtime.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/jsx-runtime.react-server.js
+deleted file mode 100644
+index 2d23c8c3442feb4c54bb924097bfa08948df5784..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/package.json b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/package.json
+deleted file mode 100644
+index ea10a9404e16101fdf13131e5d0a87697cd315aa..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react/react.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react/react.react-server.js
+deleted file mode 100644
+index c66e3b76365d7fa06f5f30614ebcc9b813ca8b44..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/LICENSE b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/LICENSE
+deleted file mode 100644
+index b93be90515ccd0b9daedaa589e42bf5929693f1f..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/README.md b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/README.md
+deleted file mode 100644
+index b078f194ce6f6a6890f9e8081ae4da583b0e99f8..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-client.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-client.development.js
+deleted file mode 100644
+index 165cf504c47dcccaec62bf6d1d960eaac29f0b60..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-client.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-client.production.js
+deleted file mode 100644
+index 11d5e2610514ae16516bca70ec0784d5b8504bfa..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-profiling.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-profiling.development.js
+deleted file mode 100644
+index 43aa07320c8ab2594db201ab72b9b24236198691..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-profiling.profiling.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-profiling.profiling.js
+deleted file mode 100644
+index a5e4325575cbb1153c07ae327b3b79064403cb0a..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.browser.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.browser.development.js
+deleted file mode 100644
+index 5f7487f9e338fc05e088fb85d235c132fe8de338..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.browser.production.js
+deleted file mode 100644
+index d9e5c62e48638055be3ba6c6af920ef98b3ffe2a..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js
+deleted file mode 100644
+index 1d9dfa4395be83585a685216a6530dfd6b28516b..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.node.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server-legacy.node.production.js
+deleted file mode 100644
+index 60c1608c2791f61e74356c3a958d3a6aaa217e81..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.browser.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.browser.development.js
+deleted file mode 100644
+index 9eee05ca08aef1fa3b964ffaef211f58ec81c526..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.browser.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.browser.production.js
+deleted file mode 100644
+index 5c7d0d2cf4efd1ef8e08cccf780160898f0ec804..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.bun.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.bun.development.js
+deleted file mode 100644
+index e7c79c1b5f42bb02aad885e1cc42f556d898d5e6..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.bun.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.bun.production.js
+deleted file mode 100644
+index f0f08cd60881c81e496727df7bf797ba8bd78986..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.edge.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.edge.development.js
+deleted file mode 100644
+index 729e2d06b68569ea9a428bbc4973b6c2bfb0aea5..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.edge.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.edge.production.js
+deleted file mode 100644
+index 9ecab46b1e31e5a906d6b613127e99f4eb40347e..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.node.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.node.development.js
+deleted file mode 100644
+index 14aed12f9fca48667dfc6e27bdc3fe7f19a04f11..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-server.node.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-server.node.production.js
+deleted file mode 100644
+index e71994e9501999a3d24a8260fc17234f61ad6fb3..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-test-utils.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-test-utils.development.js
+deleted file mode 100644
+index 5cc08fb92a168d8a4bd69b40d38ff15ab01fa05e..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom-test-utils.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom-test-utils.production.js
+deleted file mode 100644
+index 5faa80fdb9800ebd22f8e9be1672761913043591..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom.development.js
+deleted file mode 100644
+index 631b8b6a17de9a04202f0ce060bd4f737206ee50..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom.production.js
+deleted file mode 100644
+index bcd46876993b63366a3897cd336fcbd2e035d52b..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom.react-server.development.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom.react-server.development.js
+deleted file mode 100644
+index 30524653c325c0efe7f1fa83048109aade318d06..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/cjs/react-dom.react-server.production.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/cjs/react-dom.react-server.production.js
+deleted file mode 100644
+index 428f57220ad60f11a6b05e21c322eb2b6fd06ca7..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/client.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/client.js
+deleted file mode 100644
+index 02e6e22500db18a8e0d21405702da8530ab3ef9a..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/client.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/client.react-server.js
+deleted file mode 100644
+index a00f3d9b6cf6d6062a018352cb4aedb259eb8957..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/index.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/index.js
+deleted file mode 100644
+index 973f373e461a4a6fc9fc12c4220b7aa36220eddc..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/package.json b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/package.json
+deleted file mode 100644
+index 19fabb082b10007b757173471ab35063f31c733b..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/profiling.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/profiling.js
+deleted file mode 100644
+index 29e4965c66381f2d6990f2ca1751c7c7c75fc7d2..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/profiling.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/profiling.react-server.js
+deleted file mode 100644
+index 434474e4215212ab40ea9dedac84f63e374d82d2..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/react-dom.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/react-dom.react-server.js
+deleted file mode 100644
+index 065c99003f3c70bab5021070f5c44372a7ece1e1..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.browser.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.browser.js
+deleted file mode 100644
+index 04446965dc662b35ae52646f2af4d5238ec750fd..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.bun.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.bun.js
+deleted file mode 100644
+index f0b6bf3a829812c621698055cdf497dc39448c35..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.edge.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.edge.js
+deleted file mode 100644
+index d64b9da7360a617a98a1cd95733bc086df238b89..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.js
+deleted file mode 100644
+index 02f1553990a22b9d0d1995c994fbb363512fef26..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.node.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.node.js
+deleted file mode 100644
+index 0373a33b3a7505846e18715e7f55d024762c9c1f..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/server.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/server.react-server.js
+deleted file mode 100644
+index 4126b4f9e3d07a75c5d366f4abfe3371b2be3057..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/static.browser.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/static.browser.js
+deleted file mode 100644
+index ddfe2b20896dd390c255fb6468d8eac53356064f..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/static.edge.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/static.edge.js
+deleted file mode 100644
+index ff770374b314ad98601f798b1c977b6b35938888..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/static.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/static.js
+deleted file mode 100644
+index 2e39a9b183d065e8f33052d29f082b350c4ab502..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/static.node.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/static.node.js
+deleted file mode 100644
+index 5dc47d472ba4b55eaf5de9c8f2162b17d5a446d5..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/static.react-server.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/static.react-server.js
+deleted file mode 100644
+index 8325d6177064ab02616737dbeb4acdcb9477767a..0000000000000000000000000000000000000000
+diff --git a/static/canary-full/node_modules/react-dom/test-utils.js b/Users/wombat/.bun/install/cache/@expo/cli@54.0.27@@@1/static/canary-full/node_modules/react-dom/test-utils.js
+deleted file mode 100644
+index bc945913b977d2250cc69a5c0cd10ba9e1324888..0000000000000000000000000000000000000000

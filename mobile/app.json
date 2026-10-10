@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "UI Attendance",
+    "slug": "face-attendance-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B3A5C"
+    },
+    "android": {
+      "package": "ng.edu.ui.faceattendance",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#1B3A5C"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.INTERNET"
+      ]
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "The camera is used to register your face and, for lecturers, to recognise students for attendance.",
+          "enableCodeScanner": false
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.5"
+          },
+          "android": {
+            "minSdkVersion": 26,
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withPodsDeploymentTarget",
+      "./plugins/withSceneLifecycle"
+    ],
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "The camera is used to register your face and, for lecturers, to recognise students for attendance."
+      },
+      "bundleIdentifier": "ng.edu.ui.faceattendance",
+      "appleTeamId": "V47FWM6U2W"
+    }
+  }
+}

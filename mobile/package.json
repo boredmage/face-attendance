@@ -1,0 +1,57 @@
+{
+  "name": "face-attendance-mobile",
+  "version": "1.0.0",
+  "main": "expo/AppEntry.js",
+  "private": true,
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "prebuild": "expo prebuild --platform android",
+    "typecheck": "tsc --noEmit",
+    "fix-deps": "expo install --fix",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.14",
+    "@react-navigation/bottom-tabs": "^7.0.0",
+    "@react-navigation/native": "^7.0.0",
+    "@react-navigation/native-stack": "^7.0.0",
+    "axios": "^1.7.0",
+    "expo": "~54.0.0",
+    "expo-blur": "~15.0.8",
+    "expo-build-properties": "~1.0.10",
+    "expo-crypto": "~15.0.9",
+    "expo-file-system": "~19.0.24",
+    "expo-image-manipulator": "~14.0.8",
+    "expo-keep-awake": "~15.0.8",
+    "expo-network": "~8.0.8",
+    "expo-secure-store": "~15.0.8",
+    "expo-sqlite": "~16.0.10",
+    "expo-status-bar": "~3.0.9",
+    "heroui-native": "^1.0.10",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-reanimated": "~4.1.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-svg": "15.12.1",
+    "react-native-vision-camera": "^4.6.0",
+    "react-native-vision-camera-face-detector": "^1.7.0",
+    "react-native-worklets": "0.5.1",
+    "react-native-worklets-core": "^1.5.0",
+    "tailwind-merge": "^3.7.0",
+    "tailwind-variants": "^3.3.1",
+    "tailwindcss": "^4",
+    "uniwind": "^1.12.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.0",
+    "@types/react": "~19.1.10",
+    "babel-plugin-module-resolver": "^5.0.2",
+    "typescript": "^5.3.3"
+  },
+  "patchedDependencies": {
+    "@expo/cli@54.0.27": "patches/@expo%2Fcli@54.0.27.patch"
+  }
+}

@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@theme {
+  /* University navy, shared with the mobile app (mobile/src/theme.ts) */
+  --color-brand-50: #eef3f9;
+  --color-brand-100: #d9e3f0;
+  --color-brand-200: #b3c7e0;
+  --color-brand-500: #2c5282;
+  --color-brand-600: #1b3a5c;
+  --color-brand-700: #12294a;
+  --color-brand-800: #0c1d36;
+
+  /* Chart tokens (validated reference palette, see the dataviz skill) */
+  --color-series-1: #2a78d6;
+  --color-status-good: #0ca30c;
+  --color-status-warning: #fab219;
+  --color-status-critical: #d03b3b;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: #f4f6f9;
+  color: #0f172a;
+}
+
+/* Chart chrome (Recharts renders SVG; these keep the axes recessive) */
+.recharts-cartesian-axis-tick-value {
+  fill: #64748b;
+  font-size: 12px;
+}
+.recharts-cartesian-grid line {
+  stroke: #e2e8f0;
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 180ms ease-out;
+}

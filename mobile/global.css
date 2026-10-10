@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+@import 'uniwind';
+@import 'heroui-native/styles';
+
+/* University of Ibadan navy as the HeroUI accent; the app is light-only (app.json). */
+@layer theme {
+  @variant light {
+    --background: oklch(0.975 0.004 250);
+    --accent: oklch(0.36 0.075 252);
+    --accent-foreground: oklch(0.99 0 0);
+    --focus: var(--accent);
+    --link: oklch(0.45 0.12 255);
+    --radius: 0.5rem;
+  }
+
+  /* Not used (light-only app), but Uniwind needs every theme to define the same variables */
+  @variant dark {
+    --background: oklch(0.15 0.01 250);
+    --accent: oklch(0.72 0.1 252);
+    --accent-foreground: oklch(0.16 0.03 252);
+    --focus: var(--accent);
+    --link: oklch(0.75 0.12 255);
+    --radius: 0.5rem;
+  }
+}

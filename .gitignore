@@ -1,0 +1,28 @@
+.DS_Store
+*.log
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# backend data (contains personal/biometric data)
+backend/*.db
+backend/face_images/
+
+# node / build
+node_modules/
+.next/
+*.tsbuildinfo
+.expo/
+dist/
