@@ -3,9 +3,14 @@
 import { useState } from "react";
 
 import { useToast } from "@/components/Toast";
-import { Button, Card, CardHeader, Field, InlineError, Input, PageHeader, Select } from "@/components/ui";
-import { api, errorText, type LecturerMe } from "@/lib/api";
+import { Badge, Button, Card, CardHeader, ConfirmDialog, Field, InlineError, Input, PageHeader, Select } from "@/components/ui";
+import { api, errorText, type DeviceOut, type LecturerMe } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { timeAgo } from "@/lib/format";
+import { useApi } from "@/lib/hooks";
+
+/** Matches SYNC_WARN_DAYS on the server: the phone itself starts warning after this long. */
+const SYNC_WARN_DAYS = 7;
 
 const TITLES = ["Dr.", "Prof.", "Mr.", "Mrs.", "Ms."];
 
@@ -113,7 +118,85 @@ function ProfileForm({ lecturer }: { lecturer: LecturerMe }) {
             </p>
           </dl>
         </Card>
+        <AttendanceDevice />
       </div>
     </>
+  );
+}
+
+/**
+ * The phone that takes attendance. It works offline and syncs when it has internet; signing in on
+ * another phone replaces it. Signing it out here stops it syncing (after it uploads what it has).
+ */
+function AttendanceDevice() {
+  const { toast } = useToast();
+  const { data, error, reload } = useApi(api.devices, "devices");
+  const [confirm, setConfirm] = useState<DeviceOut | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [now] = useState(() => Date.now());
+  const active = data?.find((d) => d.active) ?? null;
+
+  const revoke = async () => {
+    if (!confirm) return;
+    setBusy(true);
+    try {
+      await api.revokeDevice(confirm.id);
+      toast("Phone signed out", "success");
+      setConfirm(null);
+      await reload();
+    } catch (err) {
+      toast(errorText(err), "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stale =
+    active?.last_sync_at != null && now - new Date(active.last_sync_at).getTime() > SYNC_WARN_DAYS * 86_400_000;
+
+  return (
+    <Card className="lg:col-span-3">
+      <CardHeader
+        title="Attendance phone"
+        subtitle="Takes attendance offline and syncs here whenever it has internet."
+      />
+      <div className="p-5 text-sm">
+        {error ? <InlineError message={error} /> : null}
+        {data && !active ? (
+          <p className="text-slate-500">No phone is signed in. Sign in as a lecturer in the mobile app to take attendance.</p>
+        ) : null}
+        {active ? (
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-slate-900">
+                {active.label ?? "Phone"} <Badge tone="good">Active</Badge>
+              </p>
+              <p className="mt-1 text-slate-500">
+                Last synced {active.last_sync_at ? timeAgo(active.last_sync_at) : "never"}
+                {active.app_version ? ` · app ${active.app_version}` : ""}
+              </p>
+              {stale ? (
+                <p className="mt-1 text-amber-700">
+                  This phone hasn&apos;t synced for over {SYNC_WARN_DAYS} days. Attendance it took offline is not here yet.
+                </p>
+              ) : null}
+            </div>
+            <Button variant="secondary" onClick={() => setConfirm(active)}>
+              Sign out this phone
+            </Button>
+          </div>
+        ) : null}
+      </div>
+      <ConfirmDialog
+        open={confirm !== null}
+        title="Sign out this phone?"
+        message="It will upload any attendance it still has, then stop syncing and erase class lists and faces. Sign in again in the app to keep using it."
+        confirmLabel="Sign out"
+        danger
+        busy={busy}
+        onConfirm={() => void revoke()}
+        onClose={() => setConfirm(null)}
+      />
+    </Card>
   );
 }

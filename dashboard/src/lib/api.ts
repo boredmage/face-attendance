@@ -101,6 +101,22 @@ export interface SessionSummary {
   present: number;
   expected: number;
   attendance_pct: number;
+  /** Recorded on the lecturer's phone and uploaded later; null = created through the online API */
+  synced_at: string | null;
+  /** The phone's clock was wrong by this many seconds and its times were corrected */
+  clock_offset_seconds: number | null;
+}
+
+/** A lecturer's attendance phone (one is active at a time). */
+export interface DeviceOut {
+  id: string;
+  label: string | null;
+  app_version: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+  last_sync_at: string | null;
+  active: boolean;
+  revoked_at: string | null;
 }
 
 export interface TrendPoint {
@@ -342,6 +358,10 @@ export const api = {
   unmark: (sessionId: number, studentId: number) =>
     request<SessionSummary>(`/lecturer/sessions/${sessionId}/attendance/${studentId}`, { method: "DELETE" }),
   exportSession: (id: number) => download(`/lecturer/sessions/${id}/export.csv`, `session_${id}.csv`),
+
+  // attendance phones
+  devices: () => request<DeviceOut[]>("/lecturer/devices"),
+  revokeDevice: (id: string) => request<DeviceOut>(`/lecturer/devices/${id}/revoke`, { method: "POST" }),
 
   // notifications
   notifications: (limit = 50) => request<NotificationList>(`/lecturer/notifications?limit=${limit}`),

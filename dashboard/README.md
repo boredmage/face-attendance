@@ -24,7 +24,9 @@ comma-separated if you serve it from elsewhere).
 
 Demo login after `python -m app.seed`: `ao.bello@ui.edu.ng` / `password123`.
 
-Production: `npm run build && npm start`.
+Production: `npm run build && npm start`, or the Docker image (`Dockerfile`, standalone output;
+see the root `docker-compose.yml`). Because `NEXT_PUBLIC_API_URL` is baked in at build time, rebuild
+the image after changing it.
 
 ## Pages
 

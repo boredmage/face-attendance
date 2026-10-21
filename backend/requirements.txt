@@ -1,6 +1,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.30
 sqlalchemy>=2.0
+alembic>=1.13
 pydantic[email]>=2.7
 pydantic-settings>=2.3
 PyJWT>=2.8
@@ -8,7 +9,9 @@ python-multipart>=0.0.9
 pillow>=10
 numpy>=1.26
 psycopg2-binary>=2.9        # only needed for PostgreSQL
-# --- Face recognition (heavy; install after the basics work) ---
+# --- Legacy server-side face recognition (FACE_LEGACY=true) and the model tools in tools/ ---
+# Faces are now embedded on the phones; the server only needs these to serve old app versions
+# and to run tools/convert_facenet_tflite.py / tools/eval_faces.py.
 deepface>=0.0.93
 tf-keras>=2.16
 opencv-python>=4.8,<5          # DeepFace 0.0.100's opencv/ssd detectors break on the opencv-python 5.x package layout

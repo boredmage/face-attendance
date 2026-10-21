@@ -19,7 +19,7 @@ import { studentApi } from '@/api/endpoints';
 import type { CourseSummary, LiveClass, StudentDashboard } from '@/api/types';
 import { StandingCard } from '@/components/StandingCard';
 import { EmptyState, ErrorState, LoadingState, OfflineNote, PresenceChip, Screen, SectionTitle } from '@/components/ui';
-import { useStudent } from '@/context/AuthContext';
+import { useAuth, useStudent } from '@/context/AuthContext';
 import { cacheGet, cacheSet } from '@/db/database';
 import type { RootStackParamList } from '@/navigation/types';
 import { formatDate, formatTime } from '@/utils/attendance';
@@ -33,6 +33,7 @@ const CACHE_KEY = 'dashboard:v2';
 export function HomeScreen() {
   const navigation = useNavigation<Nav>();
   const student = useStudent();
+  const { refreshStudent } = useAuth();
   const [data, setData] = useState<StudentDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,6 +44,7 @@ export function HomeScreen() {
     setError(null);
     try {
       const d = await studentApi.dashboard();
+      void refreshStudent().catch(() => undefined); // picks up face_needs_update after a model change
       setData(d);
       setFromCache(false);
       await cacheSet(CACHE_KEY, d);
@@ -58,7 +60,7 @@ export function HomeScreen() {
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [refreshStudent]);
 
   // Reload whenever the tab gains focus (e.g. after joining a course)
   useFocusEffect(
@@ -107,6 +109,20 @@ export function HomeScreen() {
         </View>
         {fromCache ? <OfflineNote /> : null}
 
+        {student.face_needs_update ? (
+          <Pressable onPress={() => navigation.navigate('EnrolFace')} className="mb-4">
+            <Alert status="warning">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>Scan your face again</Alert.Title>
+                <Alert.Description>
+                  Attendance recognition was upgraded. Until you re-scan, lecturers' phones can't recognise you. Tap to start.
+                </Alert.Description>
+              </Alert.Content>
+            </Alert>
+          </Pressable>
+        ) : null}
+
         {/* Classes in session now */}
         {d.live_classes.map((c) => <LiveBanner key={c.session_id} live={c} />)}
 
@@ -139,7 +155,7 @@ export function HomeScreen() {
             <SectionTitle>Recent classes</SectionTitle>
             {d.recent.length === 0 ? (
               <Card>
-                <Text className="text-sm text-muted">No classes have been held since you joined.</Text>
+                <Text className="text-sm text-muted">No classes have been held yet.</Text>
               </Card>
             ) : (
               <ListGroup>

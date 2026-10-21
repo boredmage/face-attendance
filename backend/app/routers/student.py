@@ -2,13 +2,16 @@
 
 Students never mark their own attendance; the lecturer's phone does that (see routers/lecturer.py).
 """
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+import json
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import face_service
+from ..config import settings
 from ..database import get_db
 from ..models import Attendance, ClassSession, Course, Enrollment, Lecturer, Notification, Student, utcnow
 from ..schemas import (CatalogCourse, CourseDetailOut, CourseSummary, FaceEnrolResult, JoinResult, LecturerOut,
@@ -84,7 +87,7 @@ def dashboard(student: Student = Depends(get_current_student), db: Session = Dep
                 lecturer_name=s.course.lecturer.display_name, venue=s.venue, started_at=s.started_at,
                 attended=mark is not None,
             ))
-        if len(recent) < 10 and session_counts_for(s, joined[s.course_id].joined_at, mark is not None):
+        if len(recent) < 10 and session_counts_for(s, mark is not None):
             recent.append(RecentAttendance(
                 session_id=s.id, course_code=s.course.code, course_title=s.course.title,
                 started_at=s.started_at, attended=mark is not None,
@@ -171,8 +174,8 @@ def course_detail(course_id: int, student: Student = Depends(get_current_student
     entries = []
     for s in sessions:
         mark = marks.get(s.id)
-        # Show live classes too (as "in progress") but hide ones from before the student joined
-        if s.is_live or session_counts_for(s, enrollment.joined_at, mark is not None):
+        # Every class of the course, live ones too (as "in progress")
+        if s.is_live or session_counts_for(s, mark is not None):
             entries.append(StudentSessionEntry(
                 session_id=s.id, started_at=s.started_at, ended_at=s.ended_at, venue=s.venue, topic=s.topic,
                 attended=mark is not None, marked_at=mark.marked_at if mark else None,
@@ -215,13 +218,20 @@ def my_lecturers(student: Student = Depends(get_current_student), db: Session = 
 @router.post("/enrol-face", response_model=FaceEnrolResult)
 async def enrol_face(
     images: list[UploadFile] = File(default=[], description="Pose photos: frontal first, then head turned"),
+    embeddings: str | None = Form(None, description="JSON list of per-pose embeddings computed on the phone"),
+    model_version: str | None = Form(None, description="Face model that computed `embeddings`"),
     student: Student = Depends(get_current_student),
     db: Session = Depends(get_db),
 ):
     """Register (or replace) the student's reference face.
 
-    The app sends several photos captured Face-ID style (looking straight, then turned
-    left/right/up/down). One embedding is stored per photo; all must be the same person.
+    The app captures several photos Face-ID style (looking straight, then turned left/right/up/
+    down) and computes one embedding per photo with the on-device model, the same model the
+    lecturer's phone matches with. It sends the embeddings plus the photos; the photos are kept
+    so faces can be re-embedded if the model ever changes. All poses must be the same person
+    and the face must not be enrolled on another account.
+
+    Legacy apps send photos only; they are embedded here with DeepFace (FACE_LEGACY).
     """
     if not images:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No image uploaded")
@@ -235,27 +245,51 @@ async def enrol_face(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "An image is empty or larger than 5 MB")
         payloads.append(data)
 
-    try:
-        # Embedding several photos takes seconds on CPU; keep the event loop free meanwhile
-        embeddings = await run_in_threadpool(face_service.enrol_embeddings, payloads)
-    except face_service.FaceError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    except RuntimeError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+    if embeddings is not None:
+        if model_version != settings.face_model_version:
+            raise HTTPException(status.HTTP_409_CONFLICT, "This app version uses an old face model. Update the app.")
+        try:
+            vectors = face_service.validate_device_embeddings(json.loads(embeddings), MAX_ENROL_IMAGES)
+        except json.JSONDecodeError:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Face data is not valid JSON")
+        except face_service.FaceError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        if len(vectors) != len(payloads):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Send one photo per pose")
+        model = settings.face_model_version
+        real = True
+    else:
+        if not settings.face_legacy:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Update the app to enrol your face")
+        try:
+            # Embedding several photos takes seconds on CPU; keep the event loop free meanwhile
+            vectors = await run_in_threadpool(face_service.enrol_embeddings, payloads)
+        except face_service.FaceError as exc:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+        except RuntimeError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+        model = None
+        real = False
 
-    # JSON columns may hold SQL NULL or JSON null, so filter in Python
-    others = [(o.id, o.face_embedding) for o in
-              db.query(Student.id, Student.face_embedding).filter(Student.id != student.id).all() if o.face_embedding]
-    if face_service.find_duplicate(embeddings, others) is not None:
+    # Only compare with faces made by the same model. JSON columns may hold SQL NULL or JSON null.
+    rows = db.query(Student.id, Student.face_embedding, Student.embedding_model).filter(Student.id != student.id).all()
+    others = [(o.id, o.face_embedding) for o in rows if o.face_embedding and o.embedding_model == model]
+    if face_service.find_duplicate(vectors, others, real_embeddings=real) is not None:
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "This face is already registered to another student account. Contact your lecturer.")
 
-    student.face_embedding = embeddings
-    student.face_image_path = face_service.save_face_image(payloads[0], student.matric_no)
+    old_paths = [*(student.face_image_paths or []), student.face_image_path]
+    paths = [face_service.save_face_image(p, student.matric_no) for p in payloads]
+    student.face_embedding = vectors
+    student.embedding_model = model
+    student.face_image_path = paths[0]
+    student.face_image_paths = paths
     student.face_enrolled_at = utcnow()
     db.commit()
+    # Only once the new face is committed: a failed enrolment keeps the previous photos
+    face_service.delete_face_images([p for p in old_paths if p and p not in paths])
     return FaceEnrolResult(
         message="Face enrolled successfully",
-        embedding_length=len(embeddings[0]),
-        images_used=len(embeddings),
+        embedding_length=len(vectors[0]),
+        images_used=len(vectors),
     )

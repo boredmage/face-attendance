@@ -12,7 +12,7 @@
       "backgroundColor": "#1B3A5C"
     },
     "android": {
-      "package": "ng.edu.ui.faceattendance",
+      "package": "ng.edu.ui.internal.faceattendance",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#1B3A5C"
@@ -24,7 +24,12 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-sqlite",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ],
       [
         "react-native-vision-camera",
         {
@@ -45,7 +50,14 @@
         }
       ],
       "./plugins/withPodsDeploymentTarget",
-      "./plugins/withSceneLifecycle"
+      "./plugins/withSceneLifecycle",
+      [
+        "react-native-fast-tflite",
+        {
+          "enableAndroidGpuLibraries": true
+        }
+      ],
+      "expo-background-task"
     ],
     "ios": {
       "infoPlist": {

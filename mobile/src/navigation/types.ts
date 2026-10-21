@@ -1,7 +1,5 @@
 import type { NavigatorScreenParams } from '@react-navigation/native';
 
-import type { SessionSummary } from '@/api/types';
-
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
@@ -27,9 +25,9 @@ export type RootStackParamList = {
   EnrolFace: undefined;
 };
 
-/** Lecturer mode is attendance-taking only. */
+/** Lecturer mode is attendance-taking only, and works offline: sessions are identified by their local uuid. */
 export type LecturerStackParamList = {
   LecturerHome: undefined;
-  TakeAttendance: { sessionId: number; courseCode: string; courseTitle: string; startedAt: string };
-  SessionSummary: { session: SessionSummary };
+  TakeAttendance: { sessionUuid: string };
+  SessionSummary: { sessionUuid: string };
 };

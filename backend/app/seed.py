@@ -15,6 +15,7 @@ import random
 from datetime import datetime, time, timedelta, timezone
 
 from .database import Base, SessionLocal, engine
+from .migrate import upgrade_db
 from .models import Attendance, ClassSession, Course, Enrollment, Lecturer, Notification, Student, utcnow
 from .security import hash_password
 
@@ -59,7 +60,9 @@ def _utc(local: datetime) -> datetime:
 def seed(reset: bool = False) -> None:
     if reset:
         Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+        with engine.begin() as conn:
+            conn.exec_driver_sql("DROP TABLE IF EXISTS alembic_version")
+    upgrade_db()
     db = SessionLocal()
     try:
         if db.query(Lecturer).count() or db.query(Student).count():

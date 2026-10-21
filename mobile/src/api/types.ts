@@ -1,4 +1,5 @@
 /** Mirrors the Pydantic schemas in backend/app/schemas.py. Datetimes are ISO strings with a UTC offset. */
+import type { PullPayload } from '@/db/lecturerStore';
 
 // ---------- Auth ----------
 export interface Student {
@@ -9,6 +10,8 @@ export interface Student {
   department: string;
   level: string;
   face_enrolled: boolean;
+  /** Enrolled with an older face model: lecturers' phones can't recognise them until they re-scan */
+  face_needs_update?: boolean;
 }
 
 export interface LecturerMe {
@@ -36,6 +39,8 @@ export interface LecturerToken {
   token_type: string;
   role: 'lecturer';
   lecturer: LecturerMe;
+  /** Present when the login named a device_id (the attendance app always does) */
+  refresh_token: string | null;
 }
 
 export interface StudentRegisterIn {
@@ -157,64 +162,28 @@ export interface FaceEnrolResult {
   images_used: number;
 }
 
-// ---------- Lecturer side (attendance mode only) ----------
-export interface LecturerCourse {
-  id: number;
-  code: string;
-  title: string;
-  description: string | null;
-  units: number | null;
-  level: string | null;
-  semester: string | null;
-  is_active: boolean;
-  created_at: string;
-  students: number;
-  faces_enrolled: number;
-  sessions: number;
-  avg_attendance_pct: number;
-  at_risk: number;
-  live_session_id: number | null;
-  last_session_at: string | null;
+// ---------- Lecturer device sync (see backend/app/routers/sync.py) ----------
+export interface SyncPullResult extends PullPayload {
+  server_time: string;
+  cursor: string;
+  matching: { model_version: string; threshold: number; margin: number };
+  offline_policy: OfflinePolicy;
 }
 
-export interface SessionSummary {
-  id: number;
-  course_id: number;
-  course_code: string;
-  course_title: string;
-  started_at: string;
-  ended_at: string | null;
-  duration_minutes: number | null;
-  venue: string | null;
-  topic: string | null;
-  is_live: boolean;
-  present: number;
-  expected: number;
-  attendance_pct: number;
+export interface OfflinePolicy {
+  warn_days: number;
+  strong_warn_days: number;
+  block_days: number;
 }
 
-export interface PresentRow {
-  student_id: number;
-  matric_no: string;
-  full_name: string;
-  marked_at: string;
-  minutes_after_start: number;
-  method: string;
-  confidence: number | null;
+export interface SyncOpResult {
+  op_id: string;
+  status: 'applied' | 'rejected';
+  reason: string | null;
 }
 
-export interface SessionDetail {
-  session: SessionSummary;
-  present: PresentRow[];
-  absent: { student_id: number; matric_no: string; full_name: string; face_enrolled: boolean }[];
-}
-
-export interface ScanResult {
-  status: 'marked' | 'already_marked' | 'not_recognised';
-  message: string;
-  student: { id: number; matric_no: string; full_name: string } | null;
-  confidence: number | null;
-  marked_at: string | null;
-  present: number;
-  expected: number;
+export interface SyncPushResult {
+  server_time: string;
+  clock_offset_seconds: number;
+  results: SyncOpResult[];
 }

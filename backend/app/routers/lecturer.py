@@ -27,6 +27,7 @@ from ..schemas import (AbsentRow, AtRiskStudent, CourseBreakdown, CourseCreate, 
 from ..security import get_current_lecturer
 from ..stats import CourseStats, is_at_risk, percentage
 from .auth import lecturer_out
+from .sync import record_tombstone
 
 router = APIRouter(prefix="/lecturer", tags=["lecturer"])
 
@@ -88,6 +89,7 @@ def _session_summary(stats: CourseStats, s: ClassSession) -> SessionSummary:
         id=s.id, course_id=s.course_id, course_code=stats.course.code, course_title=stats.course.title,
         started_at=s.started_at, ended_at=s.ended_at, duration_minutes=duration, venue=s.venue, topic=s.topic,
         is_live=s.is_live, present=present, expected=expected, attendance_pct=percentage(present, expected),
+        synced_at=s.synced_at, clock_offset_seconds=s.clock_offset_seconds,
     )
 
 
@@ -98,7 +100,7 @@ def _course_out(stats: CourseStats) -> LecturerCourse:
         id=c.id, code=c.code, title=c.title, description=c.description, units=c.units, level=c.level,
         semester=c.semester, is_active=c.is_active, created_at=c.created_at,
         students=len(stats.enrollments),
-        faces_enrolled=sum(1 for e in stats.enrollments if e.student.face_embedding),
+        faces_enrolled=sum(1 for e in stats.enrollments if e.student.face_ready),
         sessions=len(stats.ended_sessions),
         avg_attendance_pct=stats.average_pct(),
         at_risk=stats.at_risk_count(),
@@ -164,7 +166,7 @@ def overview(lecturer: Lecturer = Depends(get_current_lecturer), db: Session = D
         for e in stats.enrollments:
             if e.student_id not in students:
                 students.add(e.student_id)
-                faces += bool(e.student.face_embedding)
+                faces += e.student.face_ready
             held, attended = stats.student(e)
             if is_at_risk(attended, held):
                 at_risk.append(AtRiskStudent(
@@ -254,7 +256,7 @@ def course_detail(course_id: int, lecturer: Lecturer = Depends(get_current_lectu
         held, attended = stats.student(e)
         rows.append(CourseStudentRow(
             student_id=e.student_id, matric_no=e.student.matric_no, full_name=e.student.full_name,
-            department=e.student.department, level=e.student.level, face_enrolled=bool(e.student.face_embedding),
+            department=e.student.department, level=e.student.level, face_enrolled=e.student.face_ready,
             joined_at=e.joined_at, classes_held=held, classes_attended=attended,
             attendance_pct=percentage(attended, held), at_risk=is_at_risk(attended, held),
         ))
@@ -292,6 +294,7 @@ def delete_course(course_id: int, lecturer: Lecturer = Depends(get_current_lectu
                             "This course already has attendance records. Archive it instead of deleting.")
     db.query(Notification).filter(Notification.course_id == course.id).update({Notification.course_id: None})
     db.delete(course)
+    record_tombstone(db, lecturer.id, "course", str(course.id))
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -309,13 +312,14 @@ def remove_student(course_id: int, student_id: int, lecturer: Lecturer = Depends
         db.query(Attendance).filter(Attendance.student_id == student_id, Attendance.session_id.in_(session_ids)) \
             .delete(synchronize_session=False)
     db.delete(enrollment)
+    record_tombstone(db, lecturer.id, "enrollment", f"{course.id}:{student_id}")
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/courses/{course_id}/export.csv")
 def export_course(course_id: int, lecturer: Lecturer = Depends(get_current_lecturer), db: Session = Depends(get_db)):
-    """Attendance register: one row per student, one column per class (P / A / blank = not yet joined)."""
+    """Attendance register: one row per student, one column per class (P / A)."""
     stats = CourseStats.load(db, _own_course(db, lecturer, course_id))
     ended = sorted(stats.ended_sessions, key=lambda s: s.started_at)
     buf = io.StringIO()
@@ -323,14 +327,7 @@ def export_course(course_id: int, lecturer: Lecturer = Depends(get_current_lectu
     writer.writerow(["Matric No", "Name", *[_local(s.started_at).strftime("%Y-%m-%d %H:%M") for s in ended],
                      "Attended", "Held", "Percentage"])
     for e in sorted(stats.enrollments, key=lambda e: e.student.matric_no):
-        cells = []
-        for s in ended:
-            if stats.attended(e.student_id, s.id):
-                cells.append("P")
-            elif s.started_at >= e.joined_at:
-                cells.append("A")
-            else:
-                cells.append("")
+        cells = ["P" if stats.attended(e.student_id, s.id) else "A" for s in ended]
         held, attended = stats.student(e)
         writer.writerow([e.student.matric_no, e.student.full_name, *cells, attended, held, percentage(attended, held)])
     filename = f"{stats.course.code}_attendance_register.csv"
@@ -405,9 +402,9 @@ def session_detail(session_id: int, lecturer: Lecturer = Depends(get_current_lec
                 minutes_after_start=max(0, int((mark.marked_at - session.started_at).total_seconds() // 60)),
                 method=mark.method, confidence=mark.confidence,
             ))
-        elif e.joined_at <= session.started_at or session.is_live:
+        else:
             absent.append(AbsentRow(student_id=e.student_id, matric_no=e.student.matric_no,
-                                    full_name=e.student.full_name, face_enrolled=bool(e.student.face_embedding)))
+                                    full_name=e.student.full_name, face_enrolled=e.student.face_ready))
     present.sort(key=lambda p: p.marked_at)
     absent.sort(key=lambda a: a.matric_no)
     return SessionDetail(session=_session_summary(stats, session), present=present, absent=absent)
@@ -427,6 +424,7 @@ def delete_session(session_id: int, lecturer: Lecturer = Depends(get_current_lec
     """Remove a class started by mistake, together with its attendance marks."""
     session = _own_session(db, lecturer, session_id)
     db.delete(session)
+    record_tombstone(db, lecturer.id, "session", session.uuid)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -438,7 +436,12 @@ async def scan_face(
     lecturer: Lecturer = Depends(get_current_lecturer),
     db: Session = Depends(get_db),
 ):
-    """The lecturer's phone sends one photo of a student; find who it is among the class and mark them."""
+    """Legacy (pre offline-first app): the phone sends one photo; the server identifies the student.
+
+    Current apps match faces on the phone and send the marks through /lecturer/sync/push.
+    """
+    if not settings.face_legacy:
+        raise HTTPException(status.HTTP_410_GONE, "Update the app: attendance is now recognised on the phone")
     session = _own_session(db, lecturer, session_id)
     if not session.is_live:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This class has ended")
@@ -448,7 +451,9 @@ async def scan_face(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Image is empty or larger than 5 MB")
 
     enrollments = db.query(Enrollment).filter(Enrollment.course_id == session.course_id).all()
-    candidates = [(e.student_id, e.student.face_embedding) for e in enrollments if e.student.face_embedding]
+    # Only faces enrolled through the legacy server-side path were made by this model
+    candidates = [(e.student_id, e.student.face_embedding) for e in enrollments
+                  if e.student.face_embedding and e.student.embedding_model is None]
     if not candidates:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No student in this course has enrolled their face yet")
 
@@ -508,7 +513,8 @@ def unmark(session_id: int, student_id: int, lecturer: Lecturer = Depends(get_cu
            db: Session = Depends(get_db)):
     """Dashboard correction: remove a wrong attendance mark."""
     session = _own_session(db, lecturer, session_id)
-    db.query(Attendance).filter_by(session_id=session.id, student_id=student_id).delete()
+    if db.query(Attendance).filter_by(session_id=session.id, student_id=student_id).delete():
+        record_tombstone(db, lecturer.id, "attendance", f"{session.uuid}:{student_id}")
     db.commit()
     return _session_summary(CourseStats.load(db, session.course), session)
 

@@ -1,4 +1,6 @@
 import './global.css';
+// Defines the background sync task; must be imported at the top level (see the file)
+import '@/sync/backgroundSync';
 
 import { StatusBar } from 'expo-status-bar';
 import { HeroUINativeProvider } from 'heroui-native';

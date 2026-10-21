@@ -25,7 +25,7 @@ import {
   Th,
 } from "@/components/ui";
 import { api, errorText, type PresentRow } from "@/lib/api";
-import { formatDate, formatDuration, formatTime, pct, timeAgo } from "@/lib/format";
+import { formatDate, formatDateTime, formatDuration, formatTime, pct, timeAgo } from "@/lib/format";
 import { useApi } from "@/lib/hooks";
 
 const METHOD: Record<string, { label: string; tone: "brand" | "neutral" | "warn" }> = {
@@ -154,7 +154,18 @@ export default function SessionDetailPage() {
 
       {s.is_live ? (
         <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
-          This class is live. Students scanned on your phone appear here within a few seconds.
+          This class is live. Students scanned on your phone appear here once the phone syncs (within seconds when
+          it is online; marks taken offline arrive when it reconnects).
+        </p>
+      ) : null}
+      {s.synced_at ? (
+        <p className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
+          Recorded on your attendance phone · last synced {formatDateTime(s.synced_at)}
+          {s.clock_offset_seconds != null && Math.abs(s.clock_offset_seconds) >= 120 ? (
+            <span className="ml-1 text-amber-700">
+              · the phone&apos;s clock was {formatOffset(s.clock_offset_seconds)}, so its times were corrected
+            </span>
+          ) : null}
         </p>
       ) : null}
 
@@ -277,4 +288,11 @@ export default function SessionDetailPage() {
       />
     </>
   );
+}
+
+/** "2 h 5 min behind" / "3 min ahead" (offset = server minus phone). */
+function formatOffset(seconds: number): string {
+  const minutes = Math.round(Math.abs(seconds) / 60);
+  const text = minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
+  return `${text} ${seconds > 0 ? "behind" : "ahead"}`;
 }

@@ -8,21 +8,22 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from . import face_service
-from .database import Base, engine
 from .config import settings
-from .routers import auth, lecturer, student
+from .migrate import upgrade_db
+from .routers import auth, lecturer, student, sync
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # For a final-year project this is simpler than Alembic migrations.
-    Base.metadata.create_all(bind=engine)
-    # Load DeepFace + detector weights now so the first enrolment isn't a 30 s+ request
-    face_service.warm_up()
+    upgrade_db()
+    # Legacy server-side recognition: load DeepFace now so the first request isn't a 30 s+ wait
+    if settings.face_legacy:
+        face_service.warm_up()
     yield
 
 
@@ -33,6 +34,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Sync pulls carry every student's face embeddings; they compress well
+app.add_middleware(GZipMiddleware, minimum_size=2048)
 app.add_middleware(
     CORSMiddleware,
     # The phone app is not a browser, so CORS only concerns the lecturer dashboard
@@ -44,6 +47,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(student.router)
 app.include_router(lecturer.router)
+app.include_router(sync.router)
 
 
 @app.get("/health", tags=["meta"])

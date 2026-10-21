@@ -43,6 +43,23 @@ class LecturerRegister(BaseModel):
 class LecturerLogin(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
+    # Sent by the attendance app (not the dashboard): registers this phone as the lecturer's
+    # active device and returns a refresh token so it can keep syncing after being offline.
+    device_id: str | None = Field(None, min_length=8, max_length=36)
+    device_label: str | None = Field(None, max_length=120)
+    app_version: str | None = Field(None, max_length=40)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(..., min_length=20, max_length=200)
+
+
+class RefreshResult(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    # False once the lecturer has signed in on another phone: this one may only push its queue
+    device_active: bool
 
 
 class LecturerUpdate(BaseModel):
@@ -62,6 +79,8 @@ class StudentOut(BaseModel):
     department: str
     level: str
     face_enrolled: bool
+    # Enrolled, but with an older face model: the app asks the student to scan their face again
+    face_needs_update: bool = False
 
 
 class LecturerMe(BaseModel):
@@ -89,6 +108,7 @@ class LecturerToken(BaseModel):
     token_type: str = "bearer"
     role: Literal["lecturer"] = "lecturer"
     lecturer: LecturerMe
+    refresh_token: str | None = None  # only when the login named a device_id
 
 
 # ---------- Student side ----------
@@ -265,6 +285,10 @@ class SessionSummary(BaseModel):
     present: int
     expected: int
     attendance_pct: float
+    # Recorded on the lecturer's phone and uploaded later (None = created through the online API)
+    synced_at: UTCDateTime | None = None
+    # Set when the phone's clock was wrong and its times were corrected by this many seconds
+    clock_offset_seconds: float | None = None
 
 
 class TrendPoint(BaseModel):
@@ -392,3 +416,117 @@ class NotificationOut(BaseModel):
 class NotificationList(BaseModel):
     unread: int
     items: list[NotificationOut]
+
+
+# ---------- Offline sync (lecturer attendance device) ----------
+class SyncFace(BaseModel):
+    model: str
+    poses: int
+    data: str  # base64 of `poses` x 512 little-endian float32, L2-normalised
+
+
+class SyncStudent(BaseModel):
+    id: int
+    matric_no: str
+    full_name: str
+    face: SyncFace | None  # None = not enrolled, or enrolled with an older model (needs_update)
+    needs_update: bool = False
+
+
+class SyncCourse(BaseModel):
+    id: int
+    code: str
+    title: str
+    is_active: bool
+
+
+class SyncEnrollment(BaseModel):
+    course_id: int
+    student_id: int
+    joined_at: UTCDateTime
+
+
+class SyncSession(BaseModel):
+    uuid: str
+    course_id: int
+    started_at: UTCDateTime
+    ended_at: UTCDateTime | None
+    venue: str | None
+    topic: str | None
+
+
+class SyncMark(BaseModel):
+    session_uuid: str
+    student_id: int
+    marked_at: UTCDateTime
+    method: str
+
+
+class SyncDeleted(BaseModel):
+    courses: list[int] = []
+    enrollments: list[tuple[int, int]] = []   # (course_id, student_id)
+    sessions: list[str] = []                  # uuids
+    marks: list[tuple[str, int]] = []         # (session_uuid, student_id)
+
+
+class SyncMatching(BaseModel):
+    model_version: str
+    threshold: float
+    margin: float
+
+
+class SyncOfflinePolicy(BaseModel):
+    warn_days: int
+    strong_warn_days: int
+    block_days: int
+
+
+class SyncPullResult(BaseModel):
+    server_time: UTCDateTime
+    cursor: str          # pass back as `since` next time
+    full: bool           # True: replace everything local with this snapshot
+    matching: SyncMatching
+    offline_policy: SyncOfflinePolicy
+    courses: list[SyncCourse]
+    students: list[SyncStudent]
+    enrollments: list[SyncEnrollment]
+    sessions: list[SyncSession]
+    marks: list[SyncMark]
+    deleted: SyncDeleted
+
+
+SyncOpType = Literal["session.start", "session.end", "attendance.mark", "attendance.unmark"]
+
+
+class SyncOpIn(BaseModel):
+    op_id: str = Field(..., min_length=8, max_length=36)
+    type: SyncOpType
+    payload: dict
+
+
+class SyncPushRequest(BaseModel):
+    device_time: datetime  # the phone's clock when it sent the batch (for clock correction)
+    ops: list[SyncOpIn] = Field(..., max_length=500)
+
+
+class SyncOpResult(BaseModel):
+    op_id: str
+    status: Literal["applied", "rejected"]
+    reason: str | None = None
+
+
+class SyncPushResult(BaseModel):
+    server_time: UTCDateTime
+    clock_offset_seconds: float  # server minus device; applied when beyond the tolerance
+    results: list[SyncOpResult]
+
+
+class DeviceOut(BaseModel):
+    id: str
+    label: str | None
+    app_version: str | None
+    created_at: UTCDateTime
+    last_seen_at: UTCDateTime | None
+    last_sync_at: UTCDateTime | None
+    active: bool
+    revoked_at: UTCDateTime | None

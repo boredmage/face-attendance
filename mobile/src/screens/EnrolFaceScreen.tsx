@@ -3,15 +3,16 @@
  *
  * The student looks straight at the camera, then slowly turns their head left, right, up and
  * down. Each time the head holds a required pose inside the guide circle, a photo is captured
- * automatically and the matching segment of the ring fills in. The five photos are then sent
- * to /student/enrol-face, which stores one DeepFace embedding per pose so the lecturer's phone
- * can recognise the student in class from any reasonable angle.
+ * automatically and the matching segment of the ring fills in. Each photo is then embedded on
+ * this phone with the same model the lecturer's phone uses (src/face/embed.ts), and the photos
+ * plus embeddings go to /student/enrol-face. The lecturer's phone downloads the embeddings on its
+ * next sync and can then recognise the student offline from any reasonable angle.
  *
  * Used twice: as the mandatory last step of registration (the navigator only unlocks the app once
  * the refreshed student has `face_enrolled`), and later from Home to re-enrol.
  */
 import { useNavigation } from '@react-navigation/native';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Spinner } from 'heroui-native';
 import { Text, Vibration, View } from 'react-native';
 
@@ -21,8 +22,14 @@ import { type CapturedImage, FaceCamera, type FaceCameraHandle, type FacePose } 
 import { POSE_ORDER, type PoseKey } from '@/components/FaceGuideOverlay';
 import { Icon, SafeAreaView } from '@/components/ui';
 import { useAuth, useStudent } from '@/context/AuthContext';
+import { NoFaceError, embedPhoto } from '@/face/embed';
+import { discardFiles } from '@/utils/files';
 
-type Phase = { kind: 'capturing' } | { kind: 'uploading' } | { kind: 'done'; images: number } | { kind: 'error'; message: string };
+type Phase =
+  | { kind: 'capturing' }
+  | { kind: 'uploading'; step: string }
+  | { kind: 'done'; images: number }
+  | { kind: 'error'; message: string };
 
 // Head-angle thresholds (degrees) for each pose
 const CENTER_MAX = 12;
@@ -31,6 +38,14 @@ const TILT_MIN = 14;
 // A pose must be seen this many consecutive times (~5 reports/s) before the photo is taken,
 // so we never capture mid-movement.
 const HOLD_REPORTS = 2;
+
+const POSE_NAME: Record<PoseKey, string> = {
+  center: 'looking straight',
+  left: 'turned left',
+  right: 'turned right',
+  up: 'tilted up',
+  down: 'tilted down',
+};
 
 const POSE_HINT: Record<PoseKey, string> = {
   center: 'Look straight at the camera and hold still',
@@ -73,25 +88,46 @@ export function EnrolFaceScreen() {
   const capturedKeys = useMemo(() => POSE_ORDER.filter((p) => captured[p]), [captured]);
   const target = POSE_ORDER.find((p) => !captured[p]) ?? null;
 
+  const discardCaptured = useCallback(() => {
+    discardFiles(...Object.values(capturedRef.current).map((img) => img?.uri));
+  }, []);
+
+  // Leaving the screen mid-enrolment must not leave face photos in the cache
+  useEffect(() => discardCaptured, [discardCaptured]);
+
   const reset = useCallback(() => {
+    discardCaptured();
     capturedRef.current = {};
     hold.current = { pose: null, count: 0 };
     setCaptured({});
     setPhase({ kind: 'capturing' });
-  }, []);
+  }, [discardCaptured]);
 
   const upload = useCallback(
     async (images: Record<PoseKey, CapturedImage>) => {
-      setPhase({ kind: 'uploading' });
       try {
-        const result = await studentApi.enrolFace(POSE_ORDER.map((p) => images[p].uri));
+        const poses: { uri: string; embedding: Float32Array }[] = [];
+        for (const [i, p] of POSE_ORDER.entries()) {
+          setPhase({ kind: 'uploading', step: `Reading your face (${i + 1} of ${POSE_ORDER.length})…` });
+          try {
+            poses.push({ uri: images[p].uri, embedding: (await embedPhoto(images[p])).vector });
+          } catch (err) {
+            if (err instanceof NoFaceError) throw new Error(`No face found in the photo ${POSE_NAME[p]}. Please start over in good light.`);
+            throw err;
+          }
+        }
+        setPhase({ kind: 'uploading', step: 'Saving your face…' });
+        const result = await studentApi.enrolFace(poses);
         if (!firstEnrolment) await refreshStudent().catch(() => undefined);
         setPhase({ kind: 'done', images: result.images_used });
       } catch (err) {
         setPhase({ kind: 'error', message: errorMessage(err, 'Enrolment failed') });
+      } finally {
+        // Uploaded (or failed: retrying always starts over), so the photos are no longer needed
+        discardCaptured();
       }
     },
-    [refreshStudent, firstEnrolment],
+    [refreshStudent, firstEnrolment, discardCaptured],
   );
 
   const finish = useCallback(async () => {
@@ -114,7 +150,10 @@ export function EnrolFaceScreen() {
       capturing.current = true;
       try {
         const image = await cameraRef.current.capture();
-        if (phaseRef.current.kind !== 'capturing') return;
+        if (phaseRef.current.kind !== 'capturing') {
+          discardFiles(image.uri);
+          return;
+        }
         const next = { ...capturedRef.current, [pose]: image };
         capturedRef.current = next;
         setCaptured(next);
@@ -193,7 +232,7 @@ export function EnrolFaceScreen() {
           ) : phase.kind === 'uploading' ? (
             <>
               <Spinner size="lg" />
-              <Text className="text-center text-sm text-muted">Saving your face… this can take a few seconds</Text>
+              <Text className="text-center text-sm text-muted">{phase.step}</Text>
             </>
           ) : (
             <>

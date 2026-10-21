@@ -1,4 +1,4 @@
-/** Course detail: attendance gauge, exam eligibility for this course, and every class since the student joined. */
+/** Course detail: attendance gauge, exam eligibility for this course, and every class of the course. */
 import type { RouteProp } from '@react-navigation/native';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import { Alert, Card, ListGroup, Separator } from 'heroui-native';
@@ -78,7 +78,7 @@ export function CourseDetailScreen() {
         <SectionTitle>Attendance history</SectionTitle>
         {d.sessions.length === 0 ? (
           <Card>
-            <Text className="text-sm text-muted">No classes have been held since you joined.</Text>
+            <Text className="text-sm text-muted">No classes have been held yet.</Text>
           </Card>
         ) : (
           <ListGroup>

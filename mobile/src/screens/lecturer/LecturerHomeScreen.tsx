@@ -1,20 +1,24 @@
 /**
  * Lecturer mode home. The app is for taking attendance ONLY: pick a course, start (or resume)
  * its class, scan students, end it. Course management, logs and statistics live on the dashboard.
+ *
+ * Everything here reads the phone's local copy (src/db/lecturerStore.ts), so it works with no
+ * network; the sync badge shows whether the phone is up to date with the server.
  */
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Alert, Button, Card, Chip, Dialog, Spinner } from 'heroui-native';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Alert as NativeAlert, FlatList, KeyboardAvoidingView, RefreshControl, Text, View } from 'react-native';
 
-import { errorMessage } from '@/api/client';
-import { lecturerApi } from '@/api/endpoints';
-import type { LecturerCourse, SessionSummary } from '@/api/types';
-import { EmptyState, ErrorState, FormField, Icon, LoadingState, Screen, SectionTitle } from '@/components/ui';
+import { SyncBadge, timeAgo } from '@/components/SyncBadge';
+import { EmptyState, FormField, Icon, LoadingState, Screen, SectionTitle } from '@/components/ui';
 import { DASHBOARD_URL } from '@/config';
 import { useAuth, useLecturer } from '@/context/AuthContext';
+import { LocalError, hasAnyData, listCourses, startSession, type LocalCourse } from '@/db/lecturerStore';
 import type { LecturerStackParamList } from '@/navigation/types';
+import { syncManager } from '@/sync/syncManager';
+import { useSyncStatus } from '@/sync/useSyncStatus';
 
 type Nav = NativeStackNavigationProp<LecturerStackParamList>;
 
@@ -22,73 +26,94 @@ export function LecturerHomeScreen() {
   const navigation = useNavigation<Nav>();
   const lecturer = useLecturer();
   const { logout } = useAuth();
-  const [courses, setCourses] = useState<LecturerCourse[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const sync = useSyncStatus();
+  const [courses, setCourses] = useState<LocalCourse[] | null>(null);
+  const [hasData, setHasData] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [starting, setStarting] = useState<LecturerCourse | null>(null);
+  const [starting, setStarting] = useState<LocalCourse | null>(null);
   const [venue, setVenue] = useState('');
   const [topic, setTopic] = useState('');
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    setError(null);
-    try {
-      setCourses((await lecturerApi.courses()).filter((c) => c.is_active));
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setRefreshing(false);
-    }
+    const [list, any] = await Promise.all([listCourses(), hasAnyData()]);
+    setCourses(list);
+    setHasData(any);
   }, []);
 
-  // Reload on focus so a class ended elsewhere (or on the dashboard) stops showing "Resume"
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
+  // Re-read whenever a sync finishes (new students, a class ended on the dashboard, ...)
+  useEffect(() => {
+    if (sync.state !== 'syncing') void load();
+  }, [sync.state, sync.lastSyncAt, load]);
 
-  const openScanner = (s: SessionSummary) =>
-    navigation.navigate('TakeAttendance', {
-      sessionId: s.id,
-      courseCode: s.course_code,
-      courseTitle: s.course_title,
-      startedAt: s.started_at,
-    });
-
-  const resume = async (course: LecturerCourse) => {
-    try {
-      const detail = await lecturerApi.sessionDetail(course.live_session_id!);
-      openScanner(detail.session);
-    } catch (err) {
-      NativeAlert.alert('Could not resume', errorMessage(err));
-      void load();
-    }
+  const refresh = async () => {
+    setRefreshing(true);
+    await syncManager.syncNow();
+    await load();
+    setRefreshing(false);
   };
 
-  const askStart = (course: LecturerCourse) => {
-    if (course.faces_enrolled === 0) {
+  const askStart = (course: LocalCourse) => {
+    if (sync.state === 'replaced') {
+      NativeAlert.alert('Used on another phone', 'You signed in on another phone. Take attendance there.');
+      return;
+    }
+    if (sync.staleness === 'blocked') {
       NativeAlert.alert(
-        'No faces enrolled',
-        `None of the ${course.students} students in ${course.code} has registered their face yet, so nobody can be recognised.`,
+        'Sync needed',
+        `This phone has not synced for ${Math.floor(sync.daysSinceSync ?? 0)} days. Connect to the internet so class lists are up to date before starting a new class.`,
       );
       return;
     }
-    setVenue('');
-    setTopic('');
-    setStarting(course);
+    if (course.facesReady === 0) {
+      NativeAlert.alert(
+        'No faces enrolled',
+        `None of the ${course.students} students in ${course.code} has a face this phone can recognise yet. You can still mark them by matric number.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start anyway', onPress: () => confirmStale(course) },
+        ],
+      );
+      return;
+    }
+    confirmStale(course);
+  };
+
+  const confirmStale = (course: LocalCourse) => {
+    const open = () => {
+      setVenue('');
+      setTopic('');
+      setStarting(course);
+    };
+    if (sync.staleness === 'strong') {
+      NativeAlert.alert(
+        'Class list may be out of date',
+        `Last synced ${timeAgo(sync.lastSyncAt)}. Students who joined since then will not be recognised.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start anyway', onPress: open },
+        ],
+      );
+      return;
+    }
+    open();
   };
 
   const start = async () => {
     if (!starting) return;
     setBusy(true);
     try {
-      const session = await lecturerApi.startSession(starting.id, venue, topic);
+      const uuid = await startSession(starting.id, venue, topic);
+      syncManager.poke();
       setStarting(null);
-      openScanner(session);
+      navigation.navigate('TakeAttendance', { sessionUuid: uuid });
     } catch (err) {
-      // 409 = another class is still running; refresh so its "Resume" button shows
-      NativeAlert.alert('Could not start class', errorMessage(err));
+      NativeAlert.alert('Could not start class', err instanceof LocalError ? err.message : String(err));
       setStarting(null);
       void load();
     } finally {
@@ -96,19 +121,50 @@ export function LecturerHomeScreen() {
     }
   };
 
+  const askLogout = () => {
+    const pending = sync.pending;
+    NativeAlert.alert(
+      'Log out?',
+      pending > 0
+        ? `${pending} attendance record${pending === 1 ? ' has' : 's have'} not reached the server yet and will be lost. Sync first if you can.`
+        : 'Class lists and faces will be removed from this phone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        ...(pending > 0 ? [{ text: 'Sync now', onPress: () => void syncManager.syncNow() }] : []),
+        { text: 'Log out', style: 'destructive' as const, onPress: () => void logout() },
+      ],
+    );
+  };
+
   const header = (
     <View>
-      <View className="mb-5 flex-row items-start gap-3">
+      <View className="mb-3 flex-row items-start gap-3">
         <View className="flex-1">
           <Text className="text-sm text-muted">Attendance mode</Text>
           <Text className="text-3xl font-bold tracking-tight text-foreground">{lecturer.display_name}</Text>
           <Text className="mt-0.5 text-xs text-muted">{lecturer.department}</Text>
         </View>
-        <Button variant="ghost" size="sm" onPress={() => void logout()}>
+        <Button variant="ghost" size="sm" onPress={askLogout}>
           <Icon name="log-out-outline" size={18} color="accent" />
           <Button.Label>Log out</Button.Label>
         </Button>
       </View>
+      <View className="mb-4 flex-row">
+        <SyncBadge />
+      </View>
+      {sync.staleness === 'strong' || sync.staleness === 'blocked' ? (
+        <Alert status="danger" className="mb-3">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Last synced {timeAgo(sync.lastSyncAt)}</Alert.Title>
+            <Alert.Description>
+              {sync.staleness === 'blocked'
+                ? 'Connect to the internet before starting a new class.'
+                : 'Class lists may be out of date. Connect to the internet soon.'}
+            </Alert.Description>
+          </Alert.Content>
+        </Alert>
+      ) : null}
       <Alert status="accent">
         <Alert.Indicator />
         <Alert.Content>
@@ -120,8 +176,22 @@ export function LecturerHomeScreen() {
     </View>
   );
 
-  if (!courses && !error) return <LoadingState message="Loading your courses…" />;
-  if (!courses && error) return <ErrorState message={error} onRetry={load} />;
+  if (!courses) return <LoadingState message="Loading your courses…" />;
+
+  const empty = hasData ? (
+    <EmptyState icon="book-outline" title="No active courses" message="Create one on the dashboard first." />
+  ) : (
+    <EmptyState
+      icon="cloud-download-outline"
+      title={sync.state === 'syncing' ? 'Downloading your courses…' : 'Connect once to get started'}
+      message="The first time, this phone needs the internet to download your courses and students' faces. After that it works offline."
+      action={
+        <Button onPress={() => void refresh()} isDisabled={sync.state === 'syncing'}>
+          {sync.state === 'syncing' ? <Spinner color="white" /> : 'Download now'}
+        </Button>
+      }
+    />
+  );
 
   return (
     <Screen>
@@ -131,10 +201,10 @@ export function LecturerHomeScreen() {
         contentContainerClassName="px-5 pb-10 pt-4"
         ItemSeparatorComponent={() => <View className="h-3" />}
         ListHeaderComponent={header}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} />}
-        ListEmptyComponent={<EmptyState icon="book-outline" title="No active courses" message="Create one on the dashboard first." />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} />}
+        ListEmptyComponent={empty}
         renderItem={({ item }) => {
-          const live = item.live_session_id != null;
+          const live = item.liveSessionUuid != null;
           return (
             <Card className={`gap-2 p-4 ${live ? 'border-2 border-danger' : ''}`}>
               <View className="flex-row items-center justify-between">
@@ -144,20 +214,28 @@ export function LecturerHomeScreen() {
                 ) : null}
               </View>
               <Text className="text-base text-foreground">{item.title}</Text>
-              <View className="flex-row gap-4">
+              <View className="flex-row flex-wrap gap-x-4 gap-y-1">
                 <View className="flex-row items-center gap-1.5">
                   <Icon name="people-outline" size={15} />
                   <Text className="text-sm text-muted">{item.students} student{item.students === 1 ? '' : 's'}</Text>
                 </View>
                 <View className="flex-row items-center gap-1.5">
                   <Icon name="scan-outline" size={15} />
-                  <Text className="text-sm text-muted">{item.faces_enrolled} face{item.faces_enrolled === 1 ? '' : 's'} enrolled</Text>
+                  <Text className="text-sm text-muted">{item.facesReady} recognisable</Text>
                 </View>
+                {item.needsUpdate > 0 ? (
+                  <View className="flex-row items-center gap-1.5">
+                    <Icon name="refresh-outline" size={15} color="warning" />
+                    <Text className="text-sm text-warning">{item.needsUpdate} must re-scan their face</Text>
+                  </View>
+                ) : null}
               </View>
               <Button
                 className="mt-2"
                 variant={live ? 'danger' : 'primary'}
-                onPress={() => (live ? void resume(item) : askStart(item))}
+                onPress={() =>
+                  live ? navigation.navigate('TakeAttendance', { sessionUuid: item.liveSessionUuid! }) : askStart(item)
+                }
               >
                 <Icon name={live ? 'play' : 'scan'} size={18} color={live ? 'danger-foreground' : 'accent-foreground'} />
                 <Button.Label>{live ? 'Resume taking attendance' : 'Start class'}</Button.Label>

@@ -2,12 +2,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from ..config import settings
 from ..database import get_db
-from ..models import Lecturer, Student
-from ..schemas import (LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate,
-                       StudentLogin, StudentOut, StudentRegister, StudentToken)
+from ..models import Device, Lecturer, Student, utcnow
+from ..schemas import (LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate, RefreshRequest,
+                       RefreshResult, StudentLogin, StudentOut, StudentRegister, StudentToken)
 from ..security import (create_access_token, get_current_lecturer, get_current_student, hash_password,
-                        verify_password)
+                        issue_refresh_token, rotate_refresh_token, verify_password)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -21,6 +22,7 @@ def student_out(s: Student) -> StudentOut:
         department=s.department,
         level=s.level,
         face_enrolled=bool(s.face_embedding),
+        face_needs_update=bool(s.face_embedding) and s.embedding_model != settings.face_model_version,
     )
 
 
@@ -114,7 +116,40 @@ def login_lecturer(body: LecturerLogin, db: Session = Depends(get_db)):
     lecturer = db.query(Lecturer).filter(Lecturer.email == str(body.email).strip().lower()).first()
     if lecturer is None or not verify_password(body.password, lecturer.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
-    return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer"), lecturer=lecturer_out(lecturer))
+    if not body.device_id:  # dashboard
+        return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer"), lecturer=lecturer_out(lecturer))
+    device = _activate_device(db, lecturer, body)
+    refresh = issue_refresh_token(db, device)
+    db.commit()
+    return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer", device.id),
+                         lecturer=lecturer_out(lecturer), refresh_token=refresh)
+
+
+def _activate_device(db: Session, lecturer: Lecturer, body: LecturerLogin) -> Device:
+    """Make this phone the lecturer's one active attendance device; earlier ones become push-only."""
+    device = db.get(Device, body.device_id)
+    if device is not None and device.lecturer_id != lecturer.id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This device id belongs to another account; reinstall the app")
+    now = utcnow()
+    for other in db.query(Device).filter(Device.lecturer_id == lecturer.id, Device.revoked_at.is_(None),
+                                         Device.id != body.device_id):
+        other.revoked_at = now
+    if device is None:
+        device = Device(id=body.device_id, lecturer_id=lecturer.id)
+        db.add(device)
+    device.label = _clean(body.device_label) or device.label
+    device.app_version = _clean(body.app_version) or device.app_version
+    device.revoked_at = None
+    device.last_seen_at = now
+    return device
+
+
+@router.post("/refresh", response_model=RefreshResult)
+def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
+    """New access token for a lecturer's device. Refresh tokens are single use and rotate on every call."""
+    device, new_refresh = rotate_refresh_token(db, body.refresh_token)
+    return RefreshResult(access_token=create_access_token(device.lecturer_id, "lecturer", device.id),
+                         refresh_token=new_refresh, device_active=device.revoked_at is None)
 
 
 @router.get("/lecturer/me", response_model=LecturerMe)

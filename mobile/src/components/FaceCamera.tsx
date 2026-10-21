@@ -16,8 +16,8 @@
  *   - `onFace(pose | null)`          - head angles, eye-open / smile probabilities (when `classify`) and
  *                                      whether the face sits inside the guide circle
  *
- * Exposes `capture()` through a ref: it takes a photo, downsizes/compresses it to JPEG,
- * and returns both a file URI (for multipart upload) and base64 (for offline storage).
+ * Exposes `capture()` through a ref: it takes a photo, downsizes/compresses it to JPEG (with
+ * the EXIF rotation applied) and returns its file URI and size, ready for src/face/embed.ts.
  * The camera must stay `active` while `capture()` runs.
  */
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -36,12 +36,14 @@ import { Worklets } from 'react-native-worklets-core';
 import { Button } from 'heroui-native';
 
 import { CAPTURE_JPEG_QUALITY, CAPTURE_MAX_WIDTH } from '@/config';
+import { discardFiles } from '@/utils/files';
 
 import { FaceGuideOverlay, guideCircle, type PoseProgress, type Size } from './FaceGuideOverlay';
 
 export interface CapturedImage {
   uri: string;
-  base64: string;
+  width: number;
+  height: number;
 }
 
 export interface FaceCameraHandle {
@@ -245,13 +247,19 @@ export const FaceCamera = forwardRef<FaceCameraHandle, Props>(function FaceCamer
     async capture() {
       if (!camera.current) throw new Error('Camera not ready');
       const photo = await camera.current.takePhoto({ flash: 'off', enableShutterSound: false });
-      // Compress: resize to CAPTURE_MAX_WIDTH and re-encode as JPEG. base64 is kept for offline queueing.
-      const result = await ImageManipulator.manipulateAsync(
-        `file://${photo.path}`,
-        [{ resize: { width: CAPTURE_MAX_WIDTH } }],
-        { compress: CAPTURE_JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-      );
-      return { uri: result.uri, base64: result.base64 ?? '' };
+      // Compress: resize to CAPTURE_MAX_WIDTH and re-encode as JPEG
+      const original = `file://${photo.path}`;
+      try {
+        const result = await ImageManipulator.manipulateAsync(
+          original,
+          [{ resize: { width: CAPTURE_MAX_WIDTH } }],
+          { compress: CAPTURE_JPEG_QUALITY, format: ImageManipulator.SaveFormat.JPEG },
+        );
+        return { uri: result.uri, width: result.width, height: result.height };
+      } finally {
+        // Only the compressed copy is used; the caller deletes it when done (discardFiles)
+        discardFiles(original);
+      }
     },
   }));
 

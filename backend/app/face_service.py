@@ -192,6 +192,34 @@ def enrol_embeddings(images: list[bytes]) -> list[Embedding]:
     return embeddings
 
 
+def validate_device_embeddings(raw: object, max_poses: int) -> list[Embedding]:
+    """Check and L2-normalise enrolment embeddings computed on the student's phone.
+
+    Each pose must be a finite vector of EMBEDDING_SIZE floats and all poses must be the same
+    person (the same rule as for server-side enrolment).
+    """
+    from .face_tflite import EMBEDDING_SIZE
+    if not isinstance(raw, list) or not raw:
+        raise FaceError("No face data received")
+    if len(raw) > max_poses:
+        raise FaceError(f"At most {max_poses} poses per enrolment")
+    vectors: list[np.ndarray] = []
+    for pose in raw:
+        if not isinstance(pose, list) or len(pose) != EMBEDDING_SIZE:
+            raise FaceError("Face data has the wrong size; update the app")
+        try:
+            vec = np.asarray(pose, dtype=np.float64)
+        except (TypeError, ValueError):
+            raise FaceError("Face data is not numeric")
+        norm = np.linalg.norm(vec)
+        if not np.all(np.isfinite(vec)) or norm < 1e-6:
+            raise FaceError("Face data is invalid; please try again")
+        vectors.append(vec / norm)
+    embeddings = [[float(x) for x in v] for v in vectors]
+    check_same_person(embeddings)
+    return embeddings
+
+
 def verify(image_bytes: bytes, stored_embedding: list | None) -> tuple[bool, float]:
     """Compare a fresh photo with the stored embedding(s).
 
@@ -214,12 +242,15 @@ def verify(image_bytes: bytes, stored_embedding: list | None) -> tuple[bool, flo
     return is_match, confidence
 
 
-def find_duplicate(embeddings: list[Embedding], others: list[tuple[int, list | None]]) -> int | None:
+def find_duplicate(embeddings: list[Embedding], others: list[tuple[int, list | None]],
+                   real_embeddings: bool = False) -> int | None:
     """Id of another account whose enrolled face matches these new enrolment embeddings, if any.
 
     Stops one person enrolling on two accounts (and then being marked present for both).
+    `others` must only hold embeddings made by the same model. `real_embeddings` is set for
+    vectors computed on the phone, which are real even when the legacy backend is mocked.
     """
-    if settings.face_backend == "mock" or not embeddings:
+    if (settings.face_backend == "mock" and not real_embeddings) or not embeddings:
         return None
     frontal = np.asarray(embeddings[0], dtype=np.float32)
     for other_id, stored in others:
@@ -270,6 +301,25 @@ def save_face_image(image_bytes: bytes, matric_no: str) -> str:
     path = os.path.join(settings.face_image_dir, f"{safe}_{uuid.uuid4().hex[:8]}.jpg")
     Image.fromarray(_load_image(image_bytes)).save(path, "JPEG", quality=90)
     return path
+
+
+def delete_face_images(paths: list[str]) -> None:
+    """Remove enrolment photos that are no longer referenced (e.g. replaced by a re-enrolment).
+
+    Only files inside FACE_IMAGE_DIR are touched; a missing file is not an error.
+    """
+    root = os.path.realpath(settings.face_image_dir)
+    for path in dict.fromkeys(paths):
+        real = os.path.realpath(path)
+        if os.path.dirname(real) != root:
+            log.warning("not deleting face image outside %s: %s", root, path)
+            continue
+        try:
+            os.remove(real)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            log.exception("could not delete face image %s", path)
 
 
 # ---------------------------------------------------------------------------

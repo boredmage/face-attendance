@@ -1,0 +1,46 @@
+# Runs the backend (http://localhost:8000) and the lecturer dashboard (http://localhost:3000).
+#
+#   cp .env.example .env            # optional: set your LAN IP so phones can use the dashboard too
+#   docker compose up --build -d
+#   docker compose run --rm backend python -m app.seed --reset   # demo data (first time only)
+#
+# Then point the mobile app at this machine: API_BASE_URL = http://<your-LAN-IP>:8000 in
+# mobile/src/config.ts. The backend listens on all interfaces, so phones on the same Wi-Fi can reach it.
+
+services:
+  backend:
+    build:
+      context: ./backend
+      args:
+        WITH_DEEPFACE: ${WITH_DEEPFACE:-false}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Phones embed faces themselves; the slim image has no DeepFace, so legacy photo-only
+      # enrolment and /scan are off unless the image was built WITH_DEEPFACE=true.
+      FACE_LEGACY: ${FACE_LEGACY:-false}
+      FACE_BACKEND: ${FACE_BACKEND:-deepface}
+      FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-0.30}
+      DISPLAY_TIMEZONE: ${DISPLAY_TIMEZONE:-Africa/Lagos}
+    volumes:
+      - backend-data:/data
+      - deepface-weights:/root/.deepface
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+      args:
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "${DASHBOARD_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+  deepface-weights:

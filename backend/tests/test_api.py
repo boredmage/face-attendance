@@ -4,13 +4,14 @@ Runs with FACE_BACKEND=mock, where each solid-colour test image acts as a differ
 """
 import csv
 import io
+import os
 import uuid
 from datetime import timedelta
 
 import pytest
 
 from app.database import SessionLocal
-from app.models import ClassSession, Enrollment, utcnow
+from app.models import ClassSession, Enrollment, Student, utcnow
 
 from .conftest import make_jpeg
 
@@ -139,6 +140,23 @@ def test_enrol_face_validation(client):
     assert r.status_code == 400 and "at most" in r.json()["detail"].lower()
 
 
+def test_reenrolment_deletes_old_photos(client):
+    student, info = _new_student(client, face_color=RED)
+
+    def photo_paths() -> list[str]:
+        with SessionLocal() as db:
+            s = db.get(Student, info["id"])
+            return list(s.face_image_paths)
+
+    old = photo_paths()
+    assert len(old) == 5 and all(os.path.exists(p) for p in old)
+    files = [("images", (f"p{i}.jpg", make_jpeg(RED), "image/jpeg")) for i in range(3)]
+    assert client.post("/student/enrol-face", headers=student, files=files).status_code == 200
+    new = photo_paths()
+    assert len(new) == 3 and all(os.path.exists(p) for p in new)
+    assert not any(os.path.exists(p) for p in old)
+
+
 def test_join_requires_face_then_notifies_lecturer(client):
     lecturer = _new_lecturer(client)
     course = _new_course(client, lecturer)
@@ -232,7 +250,8 @@ def test_full_class_flow(client):
     course_detail = client.get(f"/lecturer/courses/{course['id']}", headers=lecturer).json()
     assert course_detail["course"]["sessions"] == 1
     assert course_detail["course"]["avg_attendance_pct"] == 100.0
-    assert course_detail["course"]["faces_enrolled"] == 2
+    # Enrolled through the legacy photo-only path: not recognisable by the on-device model
+    assert course_detail["course"]["faces_enrolled"] == 0
     assert all(s["classes_held"] == 1 and s["attendance_pct"] == 100.0 for s in course_detail["students"])
     assert len(course_detail["trend"]) == 1
 
@@ -272,18 +291,19 @@ def test_absent_student_and_late_joiner(client):
     _scan(client, lecturer, session["id"], RED)
     client.post(f"/lecturer/sessions/{session['id']}/end", headers=lecturer)
 
-    # Joined after the class: it doesn't count against them
+    # Joined after the class: they still missed it
     late, _ = _new_student(client, face_color=GREEN)
     client.post(f"/student/courses/{course['id']}/join", headers=late)
 
     detail = client.get(f"/lecturer/courses/{course['id']}", headers=lecturer).json()
     by_held = sorted((s["classes_held"], s["classes_attended"], s["at_risk"]) for s in detail["students"])
-    assert by_held == [(0, 0, False), (1, 0, True), (1, 1, False)]
-    assert detail["course"]["avg_attendance_pct"] == 50.0
-    assert detail["course"]["at_risk"] == 1
+    assert by_held == [(1, 0, True), (1, 0, True), (1, 1, False)]
+    assert detail["course"]["avg_attendance_pct"] == 33.3
+    assert detail["course"]["at_risk"] == 2
     session_detail = client.get(f"/lecturer/sessions/{session['id']}", headers=lecturer).json()
-    assert len(session_detail["present"]) == 1 and len(session_detail["absent"]) == 1
-    assert client.get(f"/student/courses/{course['id']}", headers=late).json()["sessions"] == []
+    assert len(session_detail["present"]) == 1 and len(session_detail["absent"]) == 2
+    late_sessions = client.get(f"/student/courses/{course['id']}", headers=late).json()["sessions"]
+    assert [s["attended"] for s in late_sessions] == [False]
 
 
 def test_stale_live_session_is_closed_automatically(client):

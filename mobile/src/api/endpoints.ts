@@ -2,8 +2,10 @@
  * Typed wrappers around every backend endpoint the app uses.
  *
  * `studentApi` backs the student screens; `lecturerApi` covers only what the lecturer's
- * attendance-taking mode needs (everything else for lecturers lives on the web dashboard).
+ * attendance phone needs: signing in and syncing (everything else lives on the web dashboard).
  */
+import { MODEL_VERSION } from '@/face/config';
+
 import { FACE_REQUEST_TIMEOUT_MS, api } from './client';
 import type {
   CatalogCourse,
@@ -12,16 +14,13 @@ import type {
   FaceEnrolResult,
   JoinResult,
   Lecturer,
-  LecturerCourse,
-  LecturerMe,
   LecturerToken,
-  ScanResult,
-  SessionDetail,
-  SessionSummary,
   Student,
   StudentDashboard,
   StudentRegisterIn,
   StudentToken,
+  SyncPullResult,
+  SyncPushResult,
 } from './types';
 
 function imagePart(uri: string, name = 'photo.jpg') {
@@ -57,10 +56,15 @@ export const studentApi = {
   async lecturers(): Promise<Lecturer[]> {
     return (await api.get<Lecturer[]>('/student/lecturers')).data;
   },
-  /** Frontal photo first, then the turned-head poses. The server stores one embedding per photo. */
-  async enrolFace(imageUris: string[]): Promise<FaceEnrolResult> {
+  /**
+   * Frontal photo first, then the turned-head poses, each with the embedding the phone computed
+   * for it (src/face/embed.ts). The server checks and stores the embeddings and keeps the photos.
+   */
+  async enrolFace(poses: { uri: string; embedding: Float32Array }[]): Promise<FaceEnrolResult> {
     const form = new FormData();
-    imageUris.forEach((uri, i) => form.append('images', imagePart(uri, `pose${i}.jpg`)));
+    poses.forEach((p, i) => form.append('images', imagePart(p.uri, `pose${i}.jpg`)));
+    form.append('embeddings', JSON.stringify(poses.map((p) => Array.from(p.embedding))));
+    form.append('model_version', MODEL_VERSION);
     const r = await api.post<FaceEnrolResult>('/student/enrol-face', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: FACE_REQUEST_TIMEOUT_MS,
@@ -69,34 +73,30 @@ export const studentApi = {
   },
 };
 
+export interface DeviceInfo {
+  deviceId: string;
+  label: string | null;
+  appVersion: string | null;
+}
+
+/** The lecturer's attendance phone: sign in, then everything else goes through sync. */
 export const lecturerApi = {
-  async login(email: string, password: string): Promise<LecturerToken> {
-    return (await api.post<LecturerToken>('/auth/lecturer/login', { email, password })).data;
+  async login(email: string, password: string, device: DeviceInfo): Promise<LecturerToken> {
+    const body = {
+      email,
+      password,
+      device_id: device.deviceId,
+      device_label: device.label,
+      app_version: device.appVersion,
+    };
+    return (await api.post<LecturerToken>('/auth/lecturer/login', body)).data;
   },
-  async me(): Promise<LecturerMe> {
-    return (await api.get<LecturerMe>('/auth/lecturer/me')).data;
+  async pull(since: string | null): Promise<SyncPullResult> {
+    const r = await api.get<SyncPullResult>('/lecturer/sync/pull', { params: since ? { since } : undefined, timeout: 60000 });
+    return r.data;
   },
-  async courses(): Promise<LecturerCourse[]> {
-    return (await api.get<LecturerCourse[]>('/lecturer/courses')).data;
-  },
-  async startSession(courseId: number, venue?: string, topic?: string): Promise<SessionSummary> {
-    const body = { venue: venue?.trim() || null, topic: topic?.trim() || null };
-    return (await api.post<SessionSummary>(`/lecturer/courses/${courseId}/sessions`, body)).data;
-  },
-  async sessionDetail(sessionId: number): Promise<SessionDetail> {
-    return (await api.get<SessionDetail>(`/lecturer/sessions/${sessionId}`)).data;
-  },
-  async endSession(sessionId: number): Promise<SessionSummary> {
-    return (await api.post<SessionSummary>(`/lecturer/sessions/${sessionId}/end`)).data;
-  },
-  /** One photo of a student in front of the lecturer's phone -> identify among the class and mark present. */
-  async scan(sessionId: number, imageUri: string): Promise<ScanResult> {
-    const form = new FormData();
-    form.append('image', imagePart(imageUri, 'scan.jpg'));
-    const r = await api.post<ScanResult>(`/lecturer/sessions/${sessionId}/scan`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: FACE_REQUEST_TIMEOUT_MS,
-    });
+  async push(ops: { op_id: string; type: string; payload: Record<string, unknown> }[]): Promise<SyncPushResult> {
+    const r = await api.post<SyncPushResult>('/lecturer/sync/push', { device_time: new Date().toISOString(), ops }, { timeout: 30000 });
     return r.data;
   },
 };

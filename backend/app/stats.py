@@ -1,16 +1,14 @@
 """Attendance statistics shared by the student app and the lecturer dashboard.
 
 Counting rules (the same everywhere, so the app and the dashboard never disagree):
-  * A session counts for a student once it has ENDED, as long as the student had already
-    joined the course when it started. Classes held before a student joined never count
-    against them.
-  * If the student was marked present, the session counts for them even while it is still live
-    or if they joined mid-class, so being scanned always shows up straight away.
+  * A session counts for every student enrolled in the course once it has ENDED, including
+    classes held before they joined: a student who joins after three classes has missed three.
+  * If the student was marked present, the session counts for them even while it is still live,
+    so being scanned always shows up straight away.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
 from fractions import Fraction
 
 from sqlalchemy.orm import Session
@@ -49,10 +47,8 @@ def exam_standing(attended: int, held: int) -> ExamStanding:
     return ExamStanding(False, -(-need.numerator // need.denominator), 0)
 
 
-def session_counts_for(session: ClassSession, joined_at: datetime, attended: bool) -> bool:
-    if attended:
-        return True
-    return session.ended_at is not None and session.started_at >= joined_at
+def session_counts_for(session: ClassSession, attended: bool) -> bool:
+    return attended or session.ended_at is not None
 
 
 @dataclass
@@ -89,20 +85,16 @@ class CourseStats:
             held = attended = 0
             for s in self.sessions:
                 was_there = self.attended(sid, s.id)
-                if session_counts_for(s, enrollment.joined_at, was_there):
+                if session_counts_for(s, was_there):
                     held += 1
                     attended += was_there
             self._per_student[sid] = (held, attended)
         return self._per_student[sid]
 
     def session(self, s: ClassSession) -> tuple[int, int]:
-        """(present, expected) for one session. Expected = students who were enrolled when it started."""
+        """(present, expected) for one session. Expected = every student enrolled in the course."""
         present = sum(1 for e in self.enrollments if self.attended(e.student_id, s.id))
-        expected = sum(
-            1 for e in self.enrollments
-            if e.joined_at <= s.started_at or self.attended(e.student_id, s.id)
-        )
-        return present, expected
+        return present, len(self.enrollments)
 
     @property
     def ended_sessions(self) -> list[ClassSession]:
@@ -137,7 +129,7 @@ def student_course_stats(db: Session, enrollment: Enrollment) -> tuple[int, int]
     held = attended = 0
     for s in sessions:
         was_there = s.id in attended_ids
-        if session_counts_for(s, enrollment.joined_at, was_there):
+        if session_counts_for(s, was_there):
             held += 1
             attended += was_there
     return held, attended
