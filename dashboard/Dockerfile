@@ -12,7 +12,8 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN npm run build
+# public/ is empty and so not in git: a fresh clone lacks it, and the run stage copies it
+RUN mkdir -p public && npm run build
 
 FROM node:22-alpine AS run
 WORKDIR /app

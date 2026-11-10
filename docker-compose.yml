@@ -1,11 +1,24 @@
-# Runs the backend (http://localhost:8000) and the lecturer dashboard (http://localhost:3000).
+# Production stack for the VPS, behind the GLOBAL Caddy on the shared `web` Docker network.
+# No TLS and no public ports here: Caddy owns the hostnames and reaches the containers by name.
 #
-#   cp .env.example .env            # optional: set your LAN IP so phones can use the dashboard too
-#   docker compose up --build -d
-#   docker compose run --rm backend python -m app.seed --reset   # demo data (first time only)
+#   ./deploy.sh             # first run asks for the domain, then builds + (re)starts
+#   ./deploy.sh --pull      # git pull, rebuild, restart
 #
-# Then point the mobile app at this machine: API_BASE_URL = http://<your-LAN-IP>:8000 in
-# mobile/src/config.ts. The backend listens on all interfaces, so phones on the same Wi-Fi can reach it.
+# Add these blocks to the global Caddyfile and reload Caddy (deploy.sh prints them with your domain):
+#
+#     api.example.com {
+#         reverse_proxy face-attendance-api:8000
+#     }
+#     dashboard.example.com {
+#         reverse_proxy face-attendance-dashboard:3000
+#     }
+#
+# Values like ${PUBLIC_API_URL} come from the .env file next to this one (written by deploy.sh,
+# template in .env.example). For local development use docker-compose.dev.yml instead.
+#
+# Explicit project name, distinct from the local docker-compose.dev.yml (named after the directory),
+# so the two stacks never treat each other's containers as their own.
+name: face-attendance-prod
 
 services:
   backend:
@@ -13,34 +26,50 @@ services:
       context: ./backend
       args:
         WITH_DEEPFACE: ${WITH_DEEPFACE:-false}
-    ports:
-      - "${BACKEND_PORT:-8000}:8000"
+    image: face-attendance-api
+    container_name: face-attendance-api
+    restart: unless-stopped
+    # Trust X-Forwarded-* from Caddy so the API sees the real scheme and client IP
+    command: ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--forwarded-allow-ips", "*"]
     environment:
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      # Phones embed faces themselves; the slim image has no DeepFace, so legacy photo-only
-      # enrolment and /scan are off unless the image was built WITH_DEEPFACE=true.
+      JWT_SECRET: "${JWT_SECRET:?JWT_SECRET is not set: run ./deploy.sh setup}"
+      # Only the dashboard is a browser; the phone app needs no CORS entry
+      CORS_ORIGINS: "${CORS_ORIGINS:?CORS_ORIGINS is not set: run ./deploy.sh setup}"
       FACE_LEGACY: ${FACE_LEGACY:-false}
       FACE_BACKEND: ${FACE_BACKEND:-deepface}
       FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-0.30}
       DISPLAY_TIMEZONE: ${DISPLAY_TIMEZONE:-Africa/Lagos}
     volumes:
+      # SQLite database + enrolment photos (personal/biometric data): keep this volume backed up
       - backend-data:/data
       - deepface-weights:/root/.deepface
-    restart: unless-stopped
+    networks:
+      - web   # Caddy reverse-proxies api.<domain> to face-attendance-api:8000
 
   dashboard:
     build:
       context: ./dashboard
       args:
-        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8000}
-    ports:
-      - "${DASHBOARD_PORT:-3000}:3000"
+        # Baked into the bundle at build time: the API as the *browser* sees it (https://api.<domain>)
+        NEXT_PUBLIC_API_URL: "${PUBLIC_API_URL:?PUBLIC_API_URL is not set: run ./deploy.sh setup}"
+    image: face-attendance-dashboard
+    container_name: face-attendance-dashboard
+    restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
-    restart: unless-stopped
+    networks:
+      - web   # Caddy reverse-proxies dashboard.<domain> to face-attendance-dashboard:3000
 
 volumes:
+  # Fixed names so the data's location never depends on the project name or checkout path
   backend-data:
+    name: face-attendance-data
   deepface-weights:
+    name: face-attendance-deepface
+
+networks:
+  # The pre-existing shared network the global Caddy container is on:  docker network create web
+  web:
+    external: true

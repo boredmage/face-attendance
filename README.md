@@ -24,11 +24,36 @@ Three parts:
    statistics, at-risk students (< 75%), trends, and CSV exports. Students see their own history in the app and,
    for each course separately, whether they are eligible for its exam (>= 75% attendance in that course).
 
-## Quick start with Docker (backend + dashboard)
+## Deploy to a VPS (behind an existing Caddy)
+
+The backend is served on `api.<domain>` and the dashboard on `dashboard.<domain>`. It needs Docker,
+DNS for both hostnames pointing at the server, and a global Caddy container on the `web` network.
 
 ```bash
-docker compose up --build -d                                   # backend :8000, dashboard :3000
-docker compose run --rm backend python -m app.seed --reset     # demo data, first time only
+git clone <repo> && cd face-attendance
+./deploy.sh              # first run asks for the domain, writes .env (random JWT secret), builds, starts
+```
+
+Then add the two blocks it prints to the Caddyfile and reload Caddy:
+
+```
+api.example.com {
+    reverse_proxy face-attendance-api:8000
+}
+dashboard.example.com {
+    reverse_proxy face-attendance-dashboard:3000
+}
+```
+
+Later: `./deploy.sh --pull` (update), `./deploy.sh rollback`, `./deploy.sh backup`, `./deploy.sh caddy`,
+`./deploy.sh seed` (demo data, empty database only), `./deploy.sh down`. Data lives in the
+`face-attendance-data` volume. Build the mobile app against `https://api.<domain>`.
+
+## Quick start with Docker (backend + dashboard, local)
+
+```bash
+docker compose -f docker-compose.dev.yml up --build -d                                # backend :8000, dashboard :3000
+docker compose -f docker-compose.dev.yml run --rm backend python -m app.seed --reset  # demo data, first time only
 ```
 
 Then set `API_BASE_URL` in `mobile/src/config.ts` to `http://<your-PC-LAN-IP>:8000` and run the app
