@@ -34,7 +34,8 @@
         "react-native-vision-camera",
         {
           "cameraPermissionText": "The camera is used to register your face and, for lecturers, to recognise students for attendance.",
-          "enableCodeScanner": false
+          "enableCodeScanner": false,
+          "enableLocation": false
         }
       ],
       [
