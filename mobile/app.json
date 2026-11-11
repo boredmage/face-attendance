@@ -61,10 +61,17 @@
     ],
     "ios": {
       "infoPlist": {
-        "NSCameraUsageDescription": "The camera is used to register your face and, for lecturers, to recognise students for attendance."
+        "NSCameraUsageDescription": "The camera is used to register your face and, for lecturers, to recognise students for attendance.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "bundleIdentifier": "ng.edu.ui.faceattendance",
       "appleTeamId": "V47FWM6U2W"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fb38ab25-ffc4-4113-9432-5bdc1f98c09a"
+      }
+    },
+    "owner": "qudusayo"
   }
 }

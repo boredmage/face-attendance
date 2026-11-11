@@ -1,0 +1,38 @@
+# EAS uses this INSTEAD of .gitignore when uploading builds.
+# Mirrors root + mobile/.gitignore, except mobile/assets/models/*.tflite,
+# which is gitignored (47 MB) but must be bundled into the app.
+
+.git
+node_modules/
+.DS_Store
+*.log
+
+# secrets (EAS env vars are set in the EAS dashboard)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.mobileprovision
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# backend data (contains personal/biometric data)
+backend/*.db
+backend/face_images/
+
+# node / build
+.next/
+*.tsbuildinfo
+.expo/
+dist/
+backups/
+
+# mobile prebuild output
+mobile/android/
+mobile/ios/
