@@ -5,6 +5,7 @@ os.environ["DATABASE_URL"] = "sqlite:///./test_attendance.db"
 os.environ["FACE_BACKEND"] = "mock"
 os.environ["JWT_SECRET"] = "test-secret-that-is-at-least-32-bytes-long"
 os.environ["FACE_IMAGE_DIR"] = "./test_face_images"  # keep test uploads out of the real folder
+os.environ["RESEND_API_KEY"] = ""  # never a real key from a local .env: the tests send no email
 
 import io  # noqa: E402
 import shutil  # noqa: E402
@@ -13,8 +14,38 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from PIL import Image  # noqa: E402
 
+from app import mailer  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import seed  # noqa: E402
+
+# The real function: the API tests below swap the module's attribute for a recorder
+send_verification_code = mailer.send_verification_code
+
+# Every confirmation code "emailed" during the tests, oldest first: (address, code)
+SENT_CODES: list[tuple[str, str]] = []
+
+
+def emailed_code(email: str) -> str:
+    """The latest confirmation code sent to an address."""
+    return next(code for to, code in reversed(SENT_CODES) if to == email.lower())
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _capture_email():
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(mailer, "send_verification_code", lambda to, name, code: SENT_CODES.append((to, code)))
+        yield
+
+
+def register(client, role: str, body: dict) -> dict:
+    """Sign up as a "student" or "lecturer" and confirm the emailed code. Returns the token response."""
+    r = client.post(f"/auth/{role}/register", json=body)
+    assert r.status_code == 202, r.text
+    pending = r.json()
+    r = client.post(f"/auth/{role}/verify-email",
+                    json={"verification_id": pending["verification_id"], "code": emailed_code(pending["email"])})
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 @pytest.fixture(scope="session", autouse=True)

@@ -12,8 +12,9 @@ Three parts:
 
 ## How it works
 
-1. **Lecturer** registers on the dashboard and creates courses.
-2. **Student** registers in the app and immediately enrols their face (Face-ID style: straight, left, right, up, down).
+1. **Lecturer** registers on the dashboard, confirms their email with the 6-digit code sent to it, and creates courses.
+2. **Student** registers in the app, confirms their email the same way, and immediately enrols their face
+   (Face-ID style: straight, left, right, up, down).
    They can then browse and join any course. The lecturer gets a dashboard notification for every join.
 3. **In class**, the lecturer logs into the same app (Lecturer tab), taps **Start class**, and students take turns
    looking at the lecturer's phone and following a random 20-second liveness challenge (e.g. "smile", then
@@ -27,12 +28,24 @@ Three parts:
 ## Deploy to a VPS (behind an existing Caddy)
 
 The backend is served on `api.<domain>` and the dashboard on `dashboard.<domain>`. It needs Docker,
-DNS for both hostnames pointing at the server, and a global Caddy container on the `web` network.
+DNS for both hostnames pointing at the server, a global Caddy container on the `web` network, and a
+[Resend](https://resend.com) account for the confirmation emails: an API key
+(<https://resend.com/api-keys>, "Sending access" is enough) and a sending domain verified at
+<https://resend.com/domains>.
 
 ```bash
 git clone <repo> && cd face-attendance
-./deploy.sh              # first run asks for the domain, writes .env (random JWT secret), builds, starts
+./deploy.sh              # first run asks for the domain, the Resend API key and the sender address,
+                         # writes .env (random JWT secret), builds, starts
+./deploy.sh test-email you@example.com   # check that mail really arrives
 ```
+
+On a server set up before email confirmation existed, the next `./deploy.sh` asks for the Resend API
+key and the sender address once and adds them to `.env` (`RESEND_API_KEY`, `EMAIL_FROM`); nothing
+else in it changes. Without a terminal, pass them in the environment:
+`RESEND_API_KEY=re_... EMAIL_FROM=no-reply@example.com ./deploy.sh`. Accounts that already exist
+keep working without confirming anything. Sign-up needs the current mobile app: older builds can
+still log in, but cannot create an account.
 
 Then add the two blocks it prints to the Caddyfile and reload Caddy:
 
@@ -46,7 +59,8 @@ dashboard.example.com {
 ```
 
 Later: `./deploy.sh --pull` (update), `./deploy.sh rollback`, `./deploy.sh backup`, `./deploy.sh caddy`,
-`./deploy.sh seed` (demo data, empty database only), `./deploy.sh down`. Data lives in the
+`./deploy.sh seed` (demo data, empty database only), `./deploy.sh test-email <address>`,
+`./deploy.sh setup` (ask everything again), `./deploy.sh down`. Data lives in the
 `face-attendance-data` volume. Build the mobile app against `https://api.<domain>`.
 
 ## Quick start with Docker (backend + dashboard, local)
@@ -61,6 +75,10 @@ Then set `API_BASE_URL` in `mobile/src/config.ts` to `http://<your-PC-LAN-IP>:80
 Copy `.env.example` to `.env` to change ports, the JWT secret, or to open the dashboard from a phone
 (`PUBLIC_API_URL` / `CORS_ORIGINS`, then rebuild). The image has no TensorFlow: faces are embedded on
 the phones. Old app versions that upload photos only need `WITH_DEEPFACE=true` and `FACE_LEGACY=true`.
+
+Locally no email is sent unless you set `RESEND_API_KEY`: when you register, the confirmation code is
+written to the backend log instead (`docker compose -f docker-compose.dev.yml logs backend`, or the
+uvicorn terminal).
 
 ## Quick start (without Docker)
 

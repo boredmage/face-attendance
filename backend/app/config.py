@@ -53,5 +53,21 @@ class Settings(BaseSettings):
     # Comma-separated origins allowed to call the API from a browser (the dashboard)
     cors_origins: str = "http://localhost:3000"
 
+    # Email confirmation: a new account is only created once the 6-digit code emailed to its
+    # address has been entered. Mail goes out through Resend (https://resend.com). Without an API
+    # key nothing is sent and the code is written to the server log instead (development only).
+    resend_api_key: str = ""
+    # "Name <address>" or a bare address, on a domain verified in Resend. Empty = Resend's test
+    # sender, which only delivers to the Resend account owner's own address.
+    email_from: str = ""
+    email_timeout_seconds: float = 10
+    # How long an emailed code works, and how many wrong tries it survives
+    email_code_minutes: int = 15
+    email_code_max_attempts: int = 5
+    # Wait between two codes sent to the same address
+    email_resend_seconds: int = 60
+    # An unconfirmed sign-up is forgotten after this long
+    pending_registration_hours: int = 24
+
 
 settings = Settings()

@@ -43,10 +43,25 @@ export interface LecturerToken {
   refresh_token: string | null;
 }
 
+/**
+ * A sign-up waiting for the 6-digit code emailed to `email`. Registering returns this instead of
+ * a token: the account is created by `studentApi.verifyEmail`. Logging in to an unconfirmed
+ * sign-up fails with a 403 that carries the same object (see `pendingVerification` in client.ts).
+ */
+export interface PendingVerification {
+  verification_id: string;
+  email: string;
+  /** Seconds to wait before another code may be requested (0 = now) */
+  resend_in_seconds: number;
+  /** Minutes a code works after it is sent */
+  code_minutes: number;
+}
+
 export interface StudentRegisterIn {
   matric_no: string;
   full_name: string;
-  email?: string | null;
+  /** Required: the account is created once the code emailed here is entered */
+  email: string;
   department: string;
   level: string;
   password: string;

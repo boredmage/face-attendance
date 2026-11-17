@@ -36,6 +36,18 @@ const EMPTY: Form = {
   confirm: "",
 };
 
+// The form as last submitted, without the two passwords: "Change your email" on /verify-email comes back
+// to it instead of an empty form. Kept in memory only, so a reload starts empty.
+let draft: Omit<Form, "password" | "confirm"> | null = null;
+
+/** The form a mount starts from: the draft while its sign-up still waits for its code, otherwise empty (and the draft is forgotten). */
+function startingForm(pendingEmail: string | undefined): Form {
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  if (draft && pendingEmail !== undefined && same(draft.email, pendingEmail)) return { ...EMPTY, ...draft };
+  draft = null;
+  return EMPTY;
+}
+
 function validate(f: Form): Partial<Record<keyof Form, string>> {
   const e: Partial<Record<keyof Form, string>> = {};
   if (f.name.trim().length < 3) e.name = "Enter your full name.";
@@ -50,9 +62,9 @@ function validate(f: Form): Partial<Record<keyof Form, string>> {
 }
 
 export default function RegisterPage() {
-  const { register } = useAuth();
+  const { register, pending } = useAuth();
   const router = useRouter();
-  const [form, setForm] = useState<Form>(EMPTY);
+  const [form, setForm] = useState<Form>(() => startingForm(pending?.email));
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -80,7 +92,10 @@ export default function RegisterPage() {
         office: opt(form.office),
         password: form.password,
       });
-      router.replace("/");
+      const { title, name, staff_id, email, department, faculty, phone, office } = form;
+      draft = { title, name, staff_id, email, department, faculty, phone, office };
+      // Nobody is signed in yet: the emailed code comes first, and Back from there returns to this form
+      router.push("/verify-email");
     } catch (err) {
       setError(errorText(err));
       setBusy(false);

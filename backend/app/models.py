@@ -79,6 +79,34 @@ class Lecturer(Base):
         return f"{self.title} {self.name}" if self.title else self.name
 
 
+class PendingRegistration(Base):
+    """A sign-up waiting for its email address to be confirmed.
+
+    The Student / Lecturer row is only created once the emailed code has been entered, so an
+    address, matric number or staff ID is never held by someone who could not confirm the address,
+    and no login token exists for an unconfirmed account. `id` is the unguessable handle the
+    client presents together with the code. There is one row per role and address: signing up
+    again with the same address replaces it.
+    """
+    __tablename__ = "pending_registrations"
+    __table_args__ = (UniqueConstraint("role", "email"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16))  # student | lecturer
+    email: Mapped[str] = mapped_column(String(120))
+    # What the account will sign in with (matric number / email), so a login can resume the confirmation
+    login_key: Mapped[str] = mapped_column(String(120), index=True)
+    # The cleaned registration fields plus password_hash: the columns of the account to create
+    payload: Mapped[dict] = mapped_column(JSON)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    code_sent_at: Mapped[datetime] = mapped_column(DateTime)
+    code_expires_at: Mapped[datetime] = mapped_column(DateTime)
+    # Codes tried against the current code (a new code starts again from 0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class Course(Base):
     __tablename__ = "courses"
 

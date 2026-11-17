@@ -10,7 +10,7 @@ import { Alert, Button, Card, Spinner, Tabs } from 'heroui-native';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 
-import { errorMessage } from '@/api/client';
+import { errorMessage, pendingVerification } from '@/api/client';
 import { FormField, Icon, Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import type { AuthStackParamList } from '@/navigation/types';
@@ -44,6 +44,18 @@ export function LoginScreen() {
       if (role === 'student') await loginStudent(identifier, password);
       else await loginLecturer(identifier, password);
     } catch (err) {
+      // A student whose sign-up was never confirmed goes on to enter the emailed code
+      const pending = role === 'student' ? pendingVerification(err) : null;
+      if (pending) {
+        setLoading(false);
+        navigation.navigate('VerifyEmail', {
+          verificationId: pending.verification_id,
+          email: pending.email,
+          resendInSeconds: pending.resend_in_seconds,
+          codeMinutes: pending.code_minutes,
+        });
+        return;
+      }
       setError(errorMessage(err, 'Login failed'));
       setLoading(false);
     }

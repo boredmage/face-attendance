@@ -17,7 +17,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { REFRESH_KEY, TOKEN_KEY, onUnauthorized } from '@/api/client';
 import { lecturerApi, studentApi } from '@/api/endpoints';
-import type { LecturerMe, Student, StudentRegisterIn } from '@/api/types';
+import type { LecturerMe, PendingVerification, Student, StudentRegisterIn } from '@/api/types';
 import { clearAll, metaGet, metaSet } from '@/db/database';
 import { loadFaceModel } from '@/face/embed';
 import { registerBackgroundSync, unregisterBackgroundSync } from '@/sync/backgroundSync';
@@ -31,7 +31,10 @@ interface AuthState {
   session: AuthSession | null;
   loading: boolean; // true while restoring the session on app start
   loginStudent(matricNo: string, password: string): Promise<void>;
-  registerStudent(body: StudentRegisterIn): Promise<void>;
+  /** Starts a sign-up: emails a confirmation code. Nobody is signed in until `verifyStudentEmail`. */
+  registerStudent(body: StudentRegisterIn): Promise<PendingVerification>;
+  /** Finishes a sign-up with the emailed code: creates the account and signs the student in. */
+  verifyStudentEmail(verificationId: string, code: string): Promise<void>;
   loginLecturer(email: string, password: string): Promise<void>;
   /** Sign the same lecturer in again after their refresh token stopped working; keeps local data. */
   reauthLecturer(password: string): Promise<void>;
@@ -103,9 +106,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [save],
   );
 
-  const registerStudent = useCallback(
-    async (body: StudentRegisterIn) => {
-      const res = await studentApi.register(body);
+  const registerStudent = useCallback((body: StudentRegisterIn) => studentApi.register(body), []);
+
+  const verifyStudentEmail = useCallback(
+    async (verificationId: string, code: string) => {
+      const res = await studentApi.verifyEmail(verificationId, code);
       await save(res.access_token, { role: 'student', student: res.student });
     },
     [save],
@@ -148,8 +153,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ session, loading, loginStudent, registerStudent, loginLecturer, reauthLecturer, logout, refreshStudent }),
-    [session, loading, loginStudent, registerStudent, loginLecturer, reauthLecturer, logout, refreshStudent],
+    () => ({
+      session,
+      loading,
+      loginStudent,
+      registerStudent,
+      verifyStudentEmail,
+      loginLecturer,
+      reauthLecturer,
+      logout,
+      refreshStudent,
+    }),
+    [session, loading, loginStudent, registerStudent, verifyStudentEmail, loginLecturer, reauthLecturer, logout, refreshStudent],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

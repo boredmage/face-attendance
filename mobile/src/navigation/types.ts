@@ -3,6 +3,8 @@ import type { NavigatorScreenParams } from '@react-navigation/native';
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
+  /** Enter the code emailed for a sign-up (the fields of the server's PendingVerification). */
+  VerifyEmail: { verificationId: string; email: string; resendInSeconds: number; codeMinutes: number };
 };
 
 /** Student who has not enrolled their face yet: nothing else is reachable. */

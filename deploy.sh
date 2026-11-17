@@ -10,15 +10,21 @@
 #
 # Usage:
 #   ./deploy.sh              # first run: ask for the domain and settings, then build + start;
-#                            # later runs: rebuild + restart
+#                            # later runs: rebuild + restart (asks for the Resend API key and the
+#                            # sender address first if .env does not have them yet)
 #   ./deploy.sh --pull       # git pull first, then build + restart
 #   ./deploy.sh --logs       # after a successful deploy, tail the logs
 #   ./deploy.sh setup        # re-run the setup questions (rewrites .env, keeps JWT_SECRET)
+#   ./deploy.sh test-email you@example.com   # send a test message with this server's email settings
 #   ./deploy.sh caddy        # print the Caddyfile blocks for this domain
 #   ./deploy.sh seed         # load the demo data into an EMPTY database (demo logins, password123)
 #   ./deploy.sh backup       # copy the database + face photos to ./backups/<timestamp>.tar.gz
 #   ./deploy.sh rollback     # re-run the previous images (bad-deploy escape)
 #   ./deploy.sh down         # stop + remove containers (the data volume is kept)
+#
+# Email: new accounts confirm their address with a code sent through Resend (https://resend.com).
+# RESEND_API_KEY and EMAIL_FROM live in .env. Without a terminal, pass them in the environment:
+#   RESEND_API_KEY=re_... EMAIL_FROM=no-reply@example.com ./deploy.sh
 #
 set -euo pipefail
 
@@ -73,6 +79,64 @@ ask_required() {  # like ask, but keeps asking until there is an answer
   done
 }
 strip_host() { local h="$1"; h="${h#https://}"; h="${h#http://}"; printf '%s' "${h%%/*}"; }
+
+# A value as it is written to .env: quoted when it has spaces ("Name <address>").
+env_quote() { case "$1" in *[[:space:]]*) printf '"%s"' "$1" ;; *) printf '%s' "$1" ;; esac; }
+
+# set_env KEY VALUE: replace that line of .env, or add it. Everything else is kept as it is.
+set_env() {
+  local tmp
+  tmp="$(mktemp)"
+  KEY="$1" LINE="$1=$(env_quote "$2")" awk '
+    index($0, ENVIRON["KEY"] "=") == 1 { if (!done) print ENVIRON["LINE"]; done = 1; next }
+    { print }
+    END { if (!done) print ENVIRON["LINE"] }
+  ' .env > "$tmp"
+  cat "$tmp" > .env
+  rm -f "$tmp"
+  chmod 600 .env
+}
+
+# ask_resend_key VAR [current]: what is typed is not shown. Enter keeps the current key, if any.
+ask_resend_key() {
+  local __var="$1" __current="${2:-}" __reply __eof
+  echo "    New accounts confirm their email with a code sent through Resend (https://resend.com)."
+  echo "    Create an API key at https://resend.com/api-keys (\"Sending access\" is enough) and paste it here."
+  while :; do
+    __reply=""; __eof=0
+    if [ -n "$__current" ]; then
+      read -r -s -p "Resend API key [Enter keeps the current one]: " __reply || __eof=1
+    else
+      read -r -s -p "Resend API key (starts with re_, hidden as you type): " __reply || __eof=1
+    fi
+    echo
+    __reply="$(printf '%s' "$__reply" | tr -d '[:space:]')"
+    __reply="${__reply:-$__current}"
+    [ -n "$__reply" ] && break
+    [ "$__eof" -eq 0 ] || die "No Resend API key given."
+    echo "  This one is needed: without it nobody can create an account."
+  done
+  case "$__reply" in
+    re_*) ;;
+    *) warn "Resend API keys start with re_ and this one does not. Saved as typed: check it with ./deploy.sh test-email" ;;
+  esac
+  printf -v "$__var" '%s' "$__reply"
+}
+
+# ask_sender VAR default: the address confirmation emails come from.
+ask_sender() {
+  local __var="$1" __default="$2" __value
+  echo "    The sender must be on a domain you have verified at https://resend.com/domains."
+  while :; do
+    ask __value "Send confirmation emails from" "$__default"
+    case "$__value" in
+      *@*.*) break ;;
+    esac
+    echo "  Enter an email address, e.g. no-reply@example.com"
+    [ -t 0 ] || die "No sender address given."
+  done
+  printf -v "$__var" '%s' "$__value"
+}
 backup_file() { [ -f "$1" ] && cp "$1" "$1.bak.$(date +%Y%m%d-%H%M%S)" && warn "Previous $1 kept as $1.bak.*"; return 0; }
 interactive() { [ -t 0 ] || [ "${DEPLOY_INTERACTIVE:-0}" = "1" ]; }
 
@@ -103,7 +167,7 @@ setup_env() {
   echo
   log "Setup: the site addresses and secrets (.env)"
   echo "    The API is served on api.<domain> and the dashboard on dashboard.<domain>."
-  local domain api dash tz threshold jwt
+  local domain api dash tz threshold jwt mail_key mail_from
   ask_required domain "Base domain (without https://, e.g. example.com)" \
     "$(api_host | sed 's/^api\.//')"
   domain="$(strip_host "$domain")"
@@ -115,6 +179,11 @@ setup_env() {
   ask threshold "Face match threshold (cosine distance, lower = stricter)" \
     "$(env_val .env FACE_DISTANCE_THRESHOLD || true)"
   threshold="${threshold:-0.30}"
+
+  mail_key="$(env_val .env RESEND_API_KEY)"; mail_from="$(env_val .env EMAIL_FROM)"
+  ask_resend_key mail_key "${mail_key:-${RESEND_API_KEY:-}}"
+  mail_from="${mail_from:-${EMAIL_FROM:-}}"
+  ask_sender mail_from "${mail_from:-no-reply@$domain}"
 
   # Keep an existing secret: changing it signs every user and every lecturer phone out.
   jwt="$(env_val .env JWT_SECRET)"
@@ -138,13 +207,44 @@ JWT_SECRET=$jwt
 DISPLAY_TIMEZONE=$tz
 FACE_DISTANCE_THRESHOLD=$threshold
 
+# Email: confirmation codes for new accounts are sent through Resend (https://resend.com).
+# EMAIL_FROM must be on a domain verified in Resend ("Name <address>" in quotes also works).
+# Check both with: ./deploy.sh test-email you@example.com
+RESEND_API_KEY=$mail_key
+EMAIL_FROM=$(env_quote "$mail_from")
+
 # Legacy server-side recognition for old app versions that upload photos only.
 # Needs the big image: set both to true and redeploy (~1 GB more, 200 MB weights on first start).
 WITH_DEEPFACE=false
 FACE_LEGACY=false
 EOF
   chmod 600 .env
-  log "Wrote .env (API https://$api, dashboard https://$dash)"
+  log "Wrote .env (API https://$api, dashboard https://$dash, email from $mail_from)"
+  MAIL_NEW=1
+}
+
+# --- Email settings ---------------------------------------------------------------
+# A .env written before email confirmation existed has no RESEND_API_KEY / EMAIL_FROM. They are
+# asked for once (or taken from the environment) and added to .env; nothing else in it changes.
+mail_ok() { [ -n "$(env_val .env RESEND_API_KEY)" ] && [ -n "$(env_val .env EMAIL_FROM)" ]; }
+
+ensure_mail_env() {
+  local key from
+  key="$(env_val .env RESEND_API_KEY)"; from="$(env_val .env EMAIL_FROM)"
+  key="${key:-${RESEND_API_KEY:-}}"; from="${from:-${EMAIL_FROM:-}}"
+  if [ -z "$key" ] || [ -z "$from" ]; then
+    interactive || die "Email is not set up and there is no terminal to ask on. Add RESEND_API_KEY=re_... and EMAIL_FROM=no-reply@<a domain verified in Resend> to .env, or pass them in the environment, then run ./deploy.sh again."
+    echo
+    log "Email: the Resend API key and sender address (.env)"
+    [ -n "$key" ] || ask_resend_key key
+    [ -n "$from" ] || ask_sender from "no-reply@$(dash_host | sed 's/^dashboard\.//')"
+  fi
+  grep -q -E '^(RESEND_API_KEY|EMAIL_FROM)=' .env \
+    || printf '\n# Email: confirmation codes for new accounts are sent through Resend (https://resend.com).\n# EMAIL_FROM must be on a domain verified in Resend. Check both with: ./deploy.sh test-email you@example.com\n' >> .env
+  set_env RESEND_API_KEY "$key"
+  set_env EMAIL_FROM "$from"
+  log "Saved the email settings to .env (sending from $from)"
+  MAIL_NEW=1
 }
 
 env_ok() {
@@ -180,6 +280,9 @@ wait_healthy() {
 case "${1:-}" in
   down)
     log "Stopping the stack (the $DATA_VOLUME volume is preserved)..."
+    # Compose will not read docker-compose.yml without the email settings; stopping does not use them
+    [ -n "$(env_val .env RESEND_API_KEY)" ] || export RESEND_API_KEY="${RESEND_API_KEY:-unset}"
+    [ -n "$(env_val .env EMAIL_FROM)" ] || export EMAIL_FROM="${EMAIL_FROM:-unset}"
     $COMPOSE down
     exit 0
     ;;
@@ -193,6 +296,13 @@ case "${1:-}" in
   caddy)
     env_ok || die "Not set up yet: run ./deploy.sh setup"
     print_caddy
+    exit 0
+    ;;
+  test-email)
+    [ -n "${2:-}" ] || die "Usage: ./deploy.sh test-email you@example.com"
+    docker ps --format '{{.Names}}' | grep -qx "$API_CONTAINER" || die "The API is not running: ./deploy.sh first."
+    # Sends through Resend with the running API's own settings and prints Resend's answer
+    docker exec "$API_CONTAINER" python -m app.mailer "$2"
     exit 0
     ;;
   seed)
@@ -274,6 +384,9 @@ if ! env_ok; then
   FIRST_RUN=1
 fi
 
+# --- Email settings (a .env from before email confirmation does not have them) ---
+mail_ok || ensure_mail_env
+
 # --- Preflight ----------------------------------------------------------------
 docker network inspect web >/dev/null 2>&1 \
   || die "Docker network 'web' does not exist. It is the network your global Caddy is on: docker network create web"
@@ -302,6 +415,10 @@ if wait_healthy; then
   [ "${FIRST_RUN:-0}" = "1" ] && print_caddy
   log "API:       $(env_val .env PUBLIC_API_URL)/health"
   log "Dashboard: $(env_val .env DASHBOARD_URL)"
+  log "Email:     confirmation codes are sent from $(env_val .env EMAIL_FROM) through Resend"
+  if [ "${MAIL_NEW:-0}" = "1" ]; then
+    echo "    Check that email arrives: ./deploy.sh test-email you@example.com"
+  fi
   if [ "$TAIL" -eq 1 ]; then
     exec $COMPOSE logs -f
   fi

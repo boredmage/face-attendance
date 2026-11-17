@@ -25,8 +25,9 @@ export default function LoginPage() {
     setError(null);
     setBusy(true);
     try {
-      await login(email, password);
-      router.replace("/");
+      // An unconfirmed sign-up owes its emailed code first; Back from there returns to this form
+      if ((await login(email, password)) === "confirm-email") router.push("/verify-email");
+      else router.replace("/");
     } catch (err) {
       setError(errorText(err));
       setBusy(false);

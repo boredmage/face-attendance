@@ -1,8 +1,10 @@
 /**
- * Student self-registration. On success the student is signed in and the navigator sends them
- * straight to the (mandatory) face-enrolment flow.
+ * Student self-registration, step 1: the student's details. On success a confirmation code is
+ * emailed and the student goes on to VerifyEmail; nobody is signed in and no account exists until
+ * the code is entered there. This screen stays underneath, so they can come back to fix the email.
  */
 import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Alert, Button, Card, Label, Spinner, Tabs } from 'heroui-native';
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
@@ -10,6 +12,7 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-na
 import { errorMessage } from '@/api/client';
 import { FormField, Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
+import type { AuthStackParamList } from '@/navigation/types';
 
 const LEVELS = ['100', '200', '300', '400', '500'];
 const MATRIC_RE = /^[A-Za-z0-9/\-]{3,32}$/;
@@ -30,7 +33,7 @@ function validate(f: Form): Errors {
   const e: Errors = {};
   if (f.fullName.trim().split(/\s+/).length < 2) e.fullName = 'Enter your first and last name';
   if (!MATRIC_RE.test(f.matricNo.trim())) e.matricNo = 'Enter a valid matric number, e.g. CSC/2021/001';
-  if (f.email.trim() && !EMAIL_RE.test(f.email.trim())) e.email = 'Enter a valid email or leave it empty';
+  if (!EMAIL_RE.test(f.email.trim())) e.email = 'Enter a valid email address';
   if (f.department.trim().length < 2) e.department = 'Enter your department';
   if (f.password.length < 6) e.password = 'At least 6 characters';
   if (f.confirm !== f.password) e.confirm = 'Passwords do not match';
@@ -38,7 +41,7 @@ function validate(f: Form): Errors {
 }
 
 export function RegisterScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
   const { registerStudent } = useAuth();
   const [form, setForm] = useState<Form>({
     fullName: '',
@@ -62,15 +65,22 @@ export function RegisterScreen() {
     setError(null);
     setLoading(true);
     try {
-      await registerStudent({
+      const pending = await registerStudent({
         full_name: form.fullName.trim(),
         matric_no: form.matricNo.trim(),
-        email: form.email.trim() || null,
+        email: form.email.trim(),
         department: form.department.trim(),
         level: form.level,
         password: form.password,
       });
-      // AppNavigator now shows the face-enrolment flow
+      // Nobody is signed in yet: the emailed code is entered on the next screen
+      setLoading(false);
+      navigation.navigate('VerifyEmail', {
+        verificationId: pending.verification_id,
+        email: pending.email,
+        resendInSeconds: pending.resend_in_seconds,
+        codeMinutes: pending.code_minutes,
+      });
     } catch (err) {
       setError(errorMessage(err, 'Registration failed'));
       setLoading(false);
@@ -81,14 +91,14 @@ export function RegisterScreen() {
     <Screen>
       <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerClassName="grow px-5 py-6" keyboardShouldPersistTaps="handled">
-          <Text className="text-xs font-semibold uppercase tracking-wider text-accent">Step 1 of 2</Text>
+          <Text className="text-xs font-semibold uppercase tracking-wider text-accent">Step 1 of 3</Text>
           <Text className="mt-1 text-3xl font-bold tracking-tight text-foreground">Create your account</Text>
-          <Text className="mb-6 mt-1 text-sm text-muted">Your details first. Next you'll register your face.</Text>
+          <Text className="mb-6 mt-1 text-sm text-muted">Your details first. Next you'll confirm your email, then register your face.</Text>
 
           <Card className="p-5">
             <FormField label="Full name" value={form.fullName} onChangeText={set('fullName')} placeholder="e.g. Adebayo Oluwaseun" error={errors.fullName} autoCapitalize="words" />
             <FormField label="Matric number" value={form.matricNo} onChangeText={set('matricNo')} placeholder="e.g. CSC/2021/001" error={errors.matricNo} autoCapitalize="characters" autoCorrect={false} />
-            <FormField label="Email (optional)" value={form.email} onChangeText={set('email')} placeholder="you@stu.ui.edu.ng" error={errors.email} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
+            <FormField label="Email" value={form.email} onChangeText={set('email')} placeholder="you@stu.ui.edu.ng" error={errors.email} autoCapitalize="none" keyboardType="email-address" autoCorrect={false} />
             <FormField label="Department" value={form.department} onChangeText={set('department')} placeholder="e.g. Computer Science" error={errors.department} autoCapitalize="words" />
 
             <Label className="mb-2">Level</Label>
@@ -116,7 +126,7 @@ export function RegisterScreen() {
             ) : null}
 
             <Button size="lg" onPress={submit} isDisabled={loading}>
-              {loading ? <Spinner color="white" /> : 'Continue to face registration'}
+              {loading ? <Spinner color="white" /> : 'Continue'}
             </Button>
           </Card>
 

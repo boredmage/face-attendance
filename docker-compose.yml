@@ -40,6 +40,10 @@ services:
       FACE_BACKEND: ${FACE_BACKEND:-deepface}
       FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-0.30}
       DISPLAY_TIMEZONE: ${DISPLAY_TIMEZONE:-Africa/Lagos}
+      # New accounts confirm their email with a code sent through Resend (https://resend.com).
+      # EMAIL_FROM must be an address on a domain verified in Resend.
+      RESEND_API_KEY: "${RESEND_API_KEY:?RESEND_API_KEY is not set: run ./deploy.sh}"
+      EMAIL_FROM: "${EMAIL_FROM:?EMAIL_FROM is not set: run ./deploy.sh}"
     volumes:
       # SQLite database + enrolment photos (personal/biometric data): keep this volume backed up
       - backend-data:/data

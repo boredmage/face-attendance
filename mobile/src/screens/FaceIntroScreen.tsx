@@ -1,5 +1,5 @@
 /**
- * Step 2 of registration: explains why the face is needed before the (mandatory) enrolment.
+ * Step 3 of registration: explains why the face is needed before the (mandatory) enrolment.
  * Until it is done the student can't reach the rest of the app, only log out.
  */
 import { useNavigation } from '@react-navigation/native';
@@ -27,7 +27,7 @@ export function FaceIntroScreen() {
   return (
     <Screen>
       <ScrollView contentContainerClassName="px-5 py-6">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-accent">Step 2 of 2</Text>
+        <Text className="text-xs font-semibold uppercase tracking-wider text-accent">Step 3 of 3</Text>
         <Text className="mt-1 text-3xl font-bold tracking-tight text-foreground">Register your face</Text>
         <Text className="mb-6 mt-2 text-base text-muted">
           Welcome, {student.full_name.split(' ')[0]}. Your lecturer takes attendance by scanning faces on their phone, so

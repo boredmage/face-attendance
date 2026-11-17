@@ -15,6 +15,7 @@ import type {
   JoinResult,
   Lecturer,
   LecturerToken,
+  PendingVerification,
   Student,
   StudentDashboard,
   StudentRegisterIn,
@@ -29,8 +30,18 @@ function imagePart(uri: string, name = 'photo.jpg') {
 }
 
 export const studentApi = {
-  async register(body: StudentRegisterIn): Promise<StudentToken> {
-    return (await api.post<StudentToken>('/auth/student/register', body)).data;
+  /** Emails a confirmation code; the account is created by `verifyEmail`. */
+  async register(body: StudentRegisterIn): Promise<PendingVerification> {
+    return (await api.post<PendingVerification>('/auth/student/register', body)).data;
+  },
+  async verifyEmail(verificationId: string, code: string): Promise<StudentToken> {
+    const body = { verification_id: verificationId, code };
+    return (await api.post<StudentToken>('/auth/student/verify-email', body)).data;
+  },
+  /** A new code for the same sign-up. Fails with 429 (see `retryAfterSeconds`) when asked too soon. */
+  async resendCode(verificationId: string): Promise<PendingVerification> {
+    const body = { verification_id: verificationId };
+    return (await api.post<PendingVerification>('/auth/verification/resend', body)).data;
   },
   async login(matricNo: string, password: string): Promise<StudentToken> {
     return (await api.post<StudentToken>('/auth/student/login', { matric_no: matricNo, password })).data;

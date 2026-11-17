@@ -13,7 +13,7 @@ import pytest
 from app.database import SessionLocal
 from app.models import ClassSession, Enrollment, Student, utcnow
 
-from .conftest import make_jpeg
+from .conftest import make_jpeg, register
 
 RED, BLUE, GREEN = (200, 30, 30), (30, 30, 200), (30, 200, 30)
 
@@ -23,21 +23,19 @@ def _uid() -> str:
 
 
 def _new_lecturer(client) -> dict:
-    r = client.post("/auth/lecturer/register", json={
+    body = register(client, "lecturer", {
         "title": "Dr.", "name": "Test Lecturer", "email": f"lect{_uid().lower()}@ui.edu.ng",
         "department": "Computer Science", "password": "secret123",
     })
-    assert r.status_code == 201, r.text
-    return {"Authorization": f"Bearer {r.json()['access_token']}"}
+    return {"Authorization": f"Bearer {body['access_token']}"}
 
 
 def _new_student(client, face_color=None) -> tuple[dict, dict]:
-    r = client.post("/auth/student/register", json={
-        "matric_no": f"TST/{_uid()}", "full_name": "Test Student", "department": "Computer Science",
-        "level": "300", "password": "secret1",
+    uid = _uid()
+    body = register(client, "student", {
+        "matric_no": f"TST/{uid}", "full_name": "Test Student", "email": f"tst{uid.lower()}@stu.ui.edu.ng",
+        "department": "Computer Science", "level": "300", "password": "secret1",
     })
-    assert r.status_code == 201, r.text
-    body = r.json()
     headers = {"Authorization": f"Bearer {body['access_token']}"}
     if face_color is not None:
         files = [("images", (f"p{i}.jpg", make_jpeg(face_color), "image/jpeg")) for i in range(5)]
@@ -66,10 +64,10 @@ def test_health(client):
 def test_student_register_and_duplicate(client):
     body = {"matric_no": "csc/2024/777", "full_name": "New Student", "email": "new777@stu.ui.edu.ng",
             "department": "Computer Science", "level": "100", "password": "secret1"}
-    r = client.post("/auth/student/register", json=body)
-    assert r.status_code == 201, r.text
-    assert r.json()["student"]["matric_no"] == "CSC/2024/777"
-    assert r.json()["student"]["face_enrolled"] is False
+    student = register(client, "student", body)["student"]
+    assert student["matric_no"] == "CSC/2024/777"
+    assert student["email"] == "new777@stu.ui.edu.ng"
+    assert student["face_enrolled"] is False
     assert client.post("/auth/student/register", json=body).status_code == 409
     assert client.post("/auth/student/register",
                        json={**body, "matric_no": "CSC/2024/778"}).status_code == 409  # same email
@@ -82,13 +80,13 @@ def test_student_login_is_case_insensitive_and_checks_password(client):
 
 def test_lecturer_register_login_and_profile(client):
     email = f"reg{_uid().lower()}@ui.edu.ng"
-    r = client.post("/auth/lecturer/register", json={
+    lecturer = register(client, "lecturer", {
         "title": "Prof.", "name": "Ada Lovelace", "staff_id": "ui/cs/9", "email": email.upper(),
         "department": "Computer Science", "password": "longpassword",
-    })
-    assert r.status_code == 201, r.text
-    assert r.json()["lecturer"]["display_name"] == "Prof. Ada Lovelace"
-    assert r.json()["lecturer"]["staff_id"] == "UI/CS/9"
+    })["lecturer"]
+    assert lecturer["display_name"] == "Prof. Ada Lovelace"
+    assert lecturer["staff_id"] == "UI/CS/9"
+    assert lecturer["email"] == email
     dup = client.post("/auth/lecturer/register", json={
         "name": "Someone", "email": email, "department": "CS", "password": "longpassword"})
     assert dup.status_code == 409

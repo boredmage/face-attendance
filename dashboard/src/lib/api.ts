@@ -29,6 +29,20 @@ export interface LecturerToken {
   lecturer: LecturerMe;
 }
 
+/**
+ * A sign-up waiting for the 6-digit code emailed to `email`. Registering returns this instead of
+ * a token: the account is created by `verifyEmail`. Signing in to an unconfirmed sign-up fails
+ * with a 403 that carries the same object (`ApiError.verification`).
+ */
+export interface PendingVerification {
+  verification_id: string;
+  email: string;
+  /** Seconds to wait before another code may be requested (0 = now) */
+  resend_in_seconds: number;
+  /** Minutes a code works after it is sent */
+  code_minutes: number;
+}
+
 export interface LecturerRegister {
   title?: string | null;
   name: string;
@@ -250,11 +264,20 @@ export function onUnauthorized(cb: () => void): () => void {
 
 // ---------- Errors ----------
 export class ApiError extends Error {
+  /** Set when signing in to a sign-up whose email is not confirmed yet (403) */
+  verification: PendingVerification | null;
+  /** Seconds to wait, set when another code was requested too soon (429) */
+  retryAfter: number | null;
+
   constructor(
     message: string,
     public status: number,
+    body: unknown = null,
   ) {
     super(message);
+    const extra = (body ?? {}) as { verification?: PendingVerification; retry_after?: number };
+    this.verification = extra.verification?.verification_id ? extra.verification : null;
+    this.retryAfter = typeof extra.retry_after === "number" ? extra.retry_after : null;
   }
 }
 
@@ -287,7 +310,7 @@ async function raw(path: string, init: RequestInit = {}): Promise<Response> {
     const body = await res.json().catch(() => null);
     // A bad password on the login form is also a 401; only an existing session should log out
     if (res.status === 401 && token) unauthorizedListeners.forEach((cb) => cb());
-    throw new ApiError(detailMessage(body, res.status), res.status);
+    throw new ApiError(detailMessage(body, res.status), res.status, body);
   }
   return res;
 }
@@ -323,7 +346,12 @@ export const api = {
   // auth
   login: (email: string, password: string) =>
     request<LecturerToken>("/auth/lecturer/login", json("POST", { email, password })),
-  register: (body: LecturerRegister) => request<LecturerToken>("/auth/lecturer/register", json("POST", body)),
+  /** Emails a confirmation code; the account is created by `verifyEmail`. */
+  register: (body: LecturerRegister) => request<PendingVerification>("/auth/lecturer/register", json("POST", body)),
+  verifyEmail: (verificationId: string, code: string) =>
+    request<LecturerToken>("/auth/lecturer/verify-email", json("POST", { verification_id: verificationId, code })),
+  resendCode: (verificationId: string) =>
+    request<PendingVerification>("/auth/verification/resend", json("POST", { verification_id: verificationId })),
   me: () => request<LecturerMe>("/auth/lecturer/me"),
   updateMe: (body: LecturerUpdate) => request<LecturerMe>("/auth/lecturer/me", json("PATCH", body)),
 

@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models import Course, Device, Enrollment, Student
 
-from .conftest import make_jpeg
+from .conftest import make_jpeg, register
 
 PASSWORD = "secret123"
 
@@ -29,11 +29,10 @@ def _auth(token: str) -> dict:
 
 def _new_lecturer(client) -> tuple[str, dict]:
     email = f"sync{_uid().lower()}@ui.edu.ng"
-    r = client.post("/auth/lecturer/register", json={
+    body = register(client, "lecturer", {
         "name": "Sync Lecturer", "email": email, "department": "Computer Science", "password": PASSWORD,
     })
-    assert r.status_code == 201, r.text
-    return email, _auth(r.json()["access_token"])
+    return email, _auth(body["access_token"])
 
 
 def _device_login(client, email: str, device_id: str | None = None) -> dict:
@@ -54,12 +53,12 @@ def _face(seed: int, poses: int = 3) -> list[list[float]]:
 
 
 def _new_student(client, face_seed: int | None) -> tuple[dict, dict]:
-    r = client.post("/auth/student/register", json={
-        "matric_no": f"SYN/{_uid()}", "full_name": f"Student {_uid()}", "department": "Computer Science",
-        "level": "400", "password": "secret1",
+    uid = _uid()
+    body = register(client, "student", {
+        "matric_no": f"SYN/{uid}", "full_name": f"Student {uid}", "email": f"syn{uid.lower()}@stu.ui.edu.ng",
+        "department": "Computer Science", "level": "400", "password": "secret1",
     })
-    assert r.status_code == 201, r.text
-    headers, info = _auth(r.json()["access_token"]), r.json()["student"]
+    headers, info = _auth(body["access_token"]), body["student"]
     if face_seed is not None:
         enrolled = _enrol(client, headers, _face(face_seed))
         assert enrolled.status_code == 200, enrolled.text

@@ -146,8 +146,9 @@ Tuning knobs: thresholds, `CHALLENGE_TIME_MS` and `CHALLENGE_STEPS` in `src/live
 
 Seed the backend (`python -m app.seed --reset`), then:
 
-1. **Student** → "Create account" → fill in details → register face (5 poses) → Browse courses →
-   Join (the lecturer sees a notification on the dashboard).
+1. **Student** → "Create account" → fill in details → enter the 6-digit code emailed to them
+   (without `RESEND_API_KEY` on the backend, read it from the backend log) → register face
+   (5 poses) → Browse courses → Join (the lecturer sees a notification on the dashboard).
    Or log in as a seeded student `CSC/2021/001` / `password123` (they must enrol a face first).
 2. **Lecturer** (on a second phone, or log out) → Lecturer tab → `ao.bello@ui.edu.ng` /
    `password123` → Start class on a course → the student follows the two prompts → green tick.
@@ -174,11 +175,11 @@ src/face/                       on-device recognition: TFLite model, crop, embed
 src/sync/                       sync manager, background task, useSyncStatus
 src/components/SyncBadge.tsx    sync state chip + details sheet (sync now, sign in again)
 src/context/AuthContext.tsx     role-aware session (student | lecturer), secure token storage
-src/navigation/AppNavigator.tsx signed-out | face setup | student tabs | lecturer mode
+src/navigation/AppNavigator.tsx signed-out (login, register, confirm email) | face setup | student tabs | lecturer mode
 src/components/FaceCamera.tsx   vision-camera + ML Kit (angles, eye-open, smile) + capture/compress
 src/components/FaceGuideOverlay.tsx  circular guide, green when a face is present
 src/components/CircularProgress.tsx  SVG attendance gauge
-src/screens/*.tsx               student screens (Login, Register, FaceIntro, EnrolFace, Home,
+src/screens/*.tsx               student screens (Login, Register, VerifyEmail, FaceIntro, EnrolFace, Home,
                                 Courses, Catalog, CourseDetail, Lecturers, Profile)
 src/screens/lecturer/*.tsx      LecturerHome, TakeAttendance, SessionSummary
 ```

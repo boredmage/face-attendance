@@ -124,13 +124,39 @@ Auth (no token):
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/auth/student/register` | create a student account → JWT |
+| POST | `/auth/student/register` | start a student sign-up: emails a 6-digit code → `{verification_id, email, resend_in_seconds, code_minutes}` (202) |
+| POST | `/auth/student/verify-email` | `{verification_id, code}` → creates the account → JWT (201) |
 | POST | `/auth/student/login` | `{matric_no, password}` → JWT |
-| POST | `/auth/lecturer/register` | create a lecturer account (dashboard sign-up) → JWT |
+| POST | `/auth/lecturer/register` | start a lecturer sign-up (dashboard): emails a code, same answer as the student one |
+| POST | `/auth/lecturer/verify-email` | `{verification_id, code}` → creates the account → JWT (201) |
+| POST | `/auth/verification/resend` | `{verification_id}` → a new code for either role; 429 with `retry_after` when asked too soon |
 | POST | `/auth/lecturer/login` | `{email, password}` → JWT; with `device_id` (the app) also a refresh token |
 | POST | `/auth/refresh` | `{refresh_token}` → new access + refresh token (lecturer phones) |
 
 Tokens carry a role; a student token cannot call `/lecturer/*` and vice versa (403).
+
+### Email confirmation
+
+Registering does not create the account. The cleaned fields wait in `pending_registrations` and a
+6-digit code is emailed through [Resend](https://resend.com) (`app/mailer.py`, standard library
+only); entering the code creates the account and signs it in (`app/verification.py`).
+
+* No account or token exists before the code is entered, so a mistyped address never locks up a
+  matric number, staff ID or email: signing up again with the same address replaces the earlier
+  sign-up, and whoever confirms first gets the account.
+* Logging in with the details of an unconfirmed sign-up answers 403 with `detail` (a sentence) and
+  `verification` (the same object registering returns), so the apps reopen the code screen.
+  Lecturers confirm on the dashboard; the phone app only tells them to.
+* A code works for `EMAIL_CODE_MINUTES` (15) and `EMAIL_CODE_MAX_ATTEMPTS` (5) tries; a new one can
+  be requested every `EMAIL_RESEND_SECONDS` (60); an unconfirmed sign-up is forgotten after
+  `PENDING_REGISTRATION_HOURS` (24). Only a keyed hash of the code is stored.
+* If the email cannot be sent the request fails with 502 and nothing is saved; Resend's reason is in
+  the server log.
+* Accounts created before this existed are untouched. Students now need an email to sign up.
+* `RESEND_API_KEY` empty (development): nothing is sent and the code is logged instead. Set
+  `EMAIL_FROM` to an address on a domain verified in Resend; left empty, Resend's test sender is
+  used, which only delivers to the Resend account owner's own address. Check a server's settings
+  with `python -m app.mailer you@example.com`.
 
 Student (`/student/*`, `/auth/student/me`):
 

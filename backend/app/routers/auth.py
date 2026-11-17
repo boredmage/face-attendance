@@ -1,12 +1,19 @@
-"""Registration and login for students (mobile app) and lecturers (dashboard + attendance mode)."""
+"""Registration and login for students (mobile app) and lecturers (dashboard + attendance mode).
+
+Registering emails a 6-digit code and returns a PendingVerification; the account is created, and
+its first token issued, by /auth/{student,lecturer}/verify-email (see app/verification.py).
+"""
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from .. import verification
 from ..config import settings
 from ..database import get_db
 from ..models import Device, Lecturer, Student, utcnow
-from ..schemas import (LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate, RefreshRequest,
-                       RefreshResult, StudentLogin, StudentOut, StudentRegister, StudentToken)
+from ..schemas import (LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate,
+                       PendingVerification, RefreshRequest, RefreshResult, ResendCode, StudentLogin, StudentOut,
+                       StudentRegister, StudentToken, VerifyEmail)
 from ..security import (create_access_token, get_current_lecturer, get_current_student, hash_password,
                         issue_refresh_token, rotate_refresh_token, verify_password)
 
@@ -46,26 +53,49 @@ def _clean(value: str | None) -> str | None:
     return value or None
 
 
+def _commit_account(db: Session) -> None:
+    try:
+        db.commit()
+    except IntegrityError:  # the same details were confirmed by another request at the same moment
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "An account with these details already exists")
+
+
 # ---------- Students ----------
-@router.post("/student/register", response_model=StudentToken, status_code=status.HTTP_201_CREATED)
-def register_student(body: StudentRegister, db: Session = Depends(get_db)):
-    """Create a student account. The app sends the student straight to face enrolment afterwards."""
-    matric = body.matric_no.strip().upper()
-    email = _clean(str(body.email) if body.email else None)
+def _student_conflicts(db: Session, matric: str, email: str) -> None:
     if db.query(Student).filter(Student.matric_no == matric).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this matric number already exists")
-    if email and db.query(Student).filter(Student.email == email.lower()).first():
+    if db.query(Student).filter(Student.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
-    student = Student(
+
+
+@router.post("/student/register", response_model=PendingVerification, status_code=status.HTTP_202_ACCEPTED)
+def register_student(body: StudentRegister, db: Session = Depends(get_db)):
+    """Start a student sign-up: emails a confirmation code. /student/verify-email creates the account."""
+    matric = body.matric_no.strip().upper()
+    email = str(body.email).strip().lower()
+    _student_conflicts(db, matric, email)
+    full_name = body.full_name.strip()
+    return verification.start(db, role="student", email=email, login_key=matric, name=full_name, payload=dict(
         matric_no=matric,
-        full_name=body.full_name.strip(),
-        email=email.lower() if email else None,
+        full_name=full_name,
+        email=email,
         department=body.department.strip(),
         level=body.level.strip() or "100",
         password_hash=hash_password(body.password),
-    )
+    ))
+
+
+@router.post("/student/verify-email", response_model=StudentToken, status_code=status.HTTP_201_CREATED)
+def verify_student_email(body: VerifyEmail, db: Session = Depends(get_db)):
+    """Finish a sign-up with the emailed code. The app sends the student straight to face enrolment afterwards."""
+    pending = verification.confirm(db, "student", body.verification_id, body.code)
+    fields = pending.payload
+    _student_conflicts(db, fields["matric_no"], fields["email"])  # taken while this sign-up was waiting
+    student = Student(**fields)
     db.add(student)
-    db.commit()
+    db.delete(pending)
+    _commit_account(db)
     db.refresh(student)
     return StudentToken(access_token=create_access_token(student.id, "student"), student=student_out(student))
 
@@ -74,6 +104,10 @@ def register_student(body: StudentRegister, db: Session = Depends(get_db)):
 def login_student(body: StudentLogin, db: Session = Depends(get_db)):
     matric = body.matric_no.strip().upper()
     student = db.query(Student).filter(Student.matric_no == matric).first()
+    if student is None:
+        pending = verification.resume(db, "student", matric, body.password)
+        if pending is not None:
+            return verification.unconfirmed_response(pending, "Confirm your email to finish creating your account.")
     if student is None or not verify_password(body.password, student.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid matric number or password")
     return StudentToken(access_token=create_access_token(student.id, "student"), student=student_out(student))
@@ -85,18 +119,24 @@ def student_me(student: Student = Depends(get_current_student)):
 
 
 # ---------- Lecturers ----------
-@router.post("/lecturer/register", response_model=LecturerToken, status_code=status.HTTP_201_CREATED)
-def register_lecturer(body: LecturerRegister, db: Session = Depends(get_db)):
-    email = str(body.email).strip().lower()
-    staff_id = _clean(body.staff_id)
-    staff_id = staff_id.upper() if staff_id else None
+def _lecturer_conflicts(db: Session, email: str, staff_id: str | None) -> None:
     if db.query(Lecturer).filter(Lecturer.email == email).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A lecturer with this email already exists")
     if staff_id and db.query(Lecturer).filter(Lecturer.staff_id == staff_id).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "A lecturer with this staff ID already exists")
-    lecturer = Lecturer(
+
+
+@router.post("/lecturer/register", response_model=PendingVerification, status_code=status.HTTP_202_ACCEPTED)
+def register_lecturer(body: LecturerRegister, db: Session = Depends(get_db)):
+    """Start a lecturer sign-up: emails a confirmation code. /lecturer/verify-email creates the account."""
+    email = str(body.email).strip().lower()
+    staff_id = _clean(body.staff_id)
+    staff_id = staff_id.upper() if staff_id else None
+    _lecturer_conflicts(db, email, staff_id)
+    name = body.name.strip()
+    return verification.start(db, role="lecturer", email=email, login_key=email, name=name, payload=dict(
         title=_clean(body.title),
-        name=body.name.strip(),
+        name=name,
         staff_id=staff_id,
         email=email,
         department=body.department.strip(),
@@ -104,16 +144,41 @@ def register_lecturer(body: LecturerRegister, db: Session = Depends(get_db)):
         phone=_clean(body.phone),
         office=_clean(body.office),
         password_hash=hash_password(body.password),
-    )
+    ))
+
+
+@router.post("/lecturer/verify-email", response_model=LecturerToken, status_code=status.HTTP_201_CREATED)
+def verify_lecturer_email(body: VerifyEmail, db: Session = Depends(get_db)):
+    """Finish a sign-up with the emailed code: creates the account and signs the dashboard in."""
+    pending = verification.confirm(db, "lecturer", body.verification_id, body.code)
+    fields = pending.payload
+    _lecturer_conflicts(db, fields["email"], fields["staff_id"])  # taken while this sign-up was waiting
+    lecturer = Lecturer(**fields)
     db.add(lecturer)
-    db.commit()
+    db.delete(pending)
+    _commit_account(db)
     db.refresh(lecturer)
     return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer"), lecturer=lecturer_out(lecturer))
 
 
+@router.post("/verification/resend", response_model=PendingVerification)
+def resend_verification_code(body: ResendCode, db: Session = Depends(get_db)):
+    """Email a new code for a sign-up of either role. Answers 429 (with `retry_after` seconds) when asked too soon."""
+    return verification.resend(db, body.verification_id)
+
+
 @router.post("/lecturer/login", response_model=LecturerToken)
 def login_lecturer(body: LecturerLogin, db: Session = Depends(get_db)):
-    lecturer = db.query(Lecturer).filter(Lecturer.email == str(body.email).strip().lower()).first()
+    email = str(body.email).strip().lower()
+    lecturer = db.query(Lecturer).filter(Lecturer.email == email).first()
+    if lecturer is None:
+        pending = verification.resume(db, "lecturer", email, body.password)
+        if pending is not None:
+            # Lecturer accounts are created on the dashboard, so that is where the code is entered
+            return verification.unconfirmed_response(
+                pending,
+                "Confirm your email on the web dashboard to finish creating your account, then sign in here."
+                if body.device_id else "Confirm your email to finish creating your account.")
     if lecturer is None or not verify_password(body.password, lecturer.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not body.device_id:  # dashboard

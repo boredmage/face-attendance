@@ -1,6 +1,6 @@
 /**
  * Root navigation, chosen by auth state:
- *   - signed out:                     Login | Register
+ *   - signed out:                     Login | Register | VerifyEmail
  *   - student without an enrolled face: FaceIntro -> EnrolFace (mandatory, nothing else reachable)
  *   - student:                        bottom tabs (Home, Courses, Lecturers, Profile) + CourseDetail / Catalog / EnrolFace on top
  *   - lecturer:                       attendance-taking only (course list -> scanner -> summary)
@@ -23,6 +23,7 @@ import { LecturersScreen } from '@/screens/LecturersScreen';
 import { LoginScreen } from '@/screens/LoginScreen';
 import { ProfileScreen } from '@/screens/ProfileScreen';
 import { RegisterScreen } from '@/screens/RegisterScreen';
+import { VerifyEmailScreen } from '@/screens/VerifyEmailScreen';
 import { LecturerHomeScreen } from '@/screens/lecturer/LecturerHomeScreen';
 import { SessionSummaryScreen } from '@/screens/lecturer/SessionSummaryScreen';
 import { TakeAttendanceScreen } from '@/screens/lecturer/TakeAttendanceScreen';
@@ -91,6 +92,7 @@ function Navigator() {
       <AuthStack.Navigator screenOptions={{ headerShown: false }}>
         <AuthStack.Screen name="Login" component={LoginScreen} />
         <AuthStack.Screen name="Register" component={RegisterScreen} />
+        <AuthStack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
       </AuthStack.Navigator>
     );
   }

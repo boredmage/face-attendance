@@ -11,6 +11,8 @@ import * as SecureStore from 'expo-secure-store';
 
 import { API_BASE_URL } from '@/config';
 
+import type { PendingVerification } from './types';
+
 export const TOKEN_KEY = 'auth_token';
 export const REFRESH_KEY = 'refresh_token';
 /** Response header the server sets on lecturer-device errors: "replaced" | "signed_out" */
@@ -128,6 +130,20 @@ export function errorMessage(err: unknown, fallback = 'Something went wrong. Ple
   }
   if (err instanceof Error) return err.message;
   return fallback;
+}
+
+/** The sign-up to finish, when a login failed because its email is not confirmed yet (403). */
+export function pendingVerification(err: unknown): PendingVerification | null {
+  if (!axios.isAxiosError(err) || err.response?.status !== 403) return null;
+  const pending = (err.response.data as { verification?: PendingVerification } | undefined)?.verification;
+  return pending?.verification_id ? pending : null;
+}
+
+/** Seconds to wait, when another confirmation code was requested too soon (429). */
+export function retryAfterSeconds(err: unknown): number | null {
+  if (!axios.isAxiosError(err) || err.response?.status !== 429) return null;
+  const seconds = (err.response.data as { retry_after?: unknown } | undefined)?.retry_after;
+  return typeof seconds === 'number' ? seconds : null;
 }
 
 export function isNetworkError(err: unknown): boolean {

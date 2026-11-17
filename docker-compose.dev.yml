@@ -26,6 +26,10 @@ services:
       FACE_BACKEND: ${FACE_BACKEND:-deepface}
       FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-0.30}
       DISPLAY_TIMEZONE: ${DISPLAY_TIMEZONE:-Africa/Lagos}
+      # Email confirmation codes. Without a Resend API key nothing is sent: the code is written to
+      # the backend log instead (docker compose -f docker-compose.dev.yml logs backend).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
     volumes:
       - backend-data:/data
       - deepface-weights:/root/.deepface

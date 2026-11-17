@@ -7,7 +7,7 @@ import { Brand } from "@/components/Shell";
 import { FaceIcon, PhoneIcon, BookIcon } from "@/components/icons";
 import { useAuth } from "@/lib/auth";
 
-/** Split layout for /login and /register: university branding on the left, form on the right. */
+/** Split layout for /login, /register and /verify-email: university branding on the left, form on the right. */
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const { lecturer, loading } = useAuth();
   const router = useRouter();

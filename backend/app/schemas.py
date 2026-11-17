@@ -17,7 +17,8 @@ UTCDateTime = Annotated[
 class StudentRegister(BaseModel):
     matric_no: str = Field(..., min_length=3, max_length=32)
     full_name: str = Field(..., min_length=3, max_length=120)
-    email: EmailStr | None = None
+    # Required since email confirmation: the account is created once the emailed code is entered
+    email: EmailStr
     department: str = Field(..., min_length=2, max_length=120)
     level: str = Field("100", max_length=10)
     password: str = Field(..., min_length=6, max_length=128)
@@ -48,6 +49,28 @@ class LecturerLogin(BaseModel):
     device_id: str | None = Field(None, min_length=8, max_length=36)
     device_label: str | None = Field(None, max_length=120)
     app_version: str | None = Field(None, max_length=40)
+
+
+class PendingVerification(BaseModel):
+    """A sign-up waiting for the code emailed to `email`. Registering returns this instead of a token.
+
+    Signing in to an unconfirmed sign-up answers 403 with this object under `verification`.
+    """
+    verification_id: str
+    email: str
+    # Wait this long before asking for another code (0 = one can be requested now)
+    resend_in_seconds: int
+    # How long a code works after it is sent
+    code_minutes: int
+
+
+class VerifyEmail(BaseModel):
+    verification_id: str = Field(..., min_length=20, max_length=64)
+    code: str = Field(..., min_length=1, max_length=12)
+
+
+class ResendCode(BaseModel):
+    verification_id: str = Field(..., min_length=20, max_length=64)
 
 
 class RefreshRequest(BaseModel):
