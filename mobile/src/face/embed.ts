@@ -10,6 +10,7 @@
  * Used by student enrolment (one embedding per pose) and by the lecturer's scanner. Both must use
  * exactly this code so their embeddings are comparable.
  */
+import { Asset } from 'expo-asset';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as jpeg from 'jpeg-js';
 import { Platform } from 'react-native';
@@ -34,7 +35,13 @@ let modelPromise: Promise<TfliteModel> | null = null;
 export function loadFaceModel(): Promise<TfliteModel> {
   if (!modelPromise) {
     modelPromise = (async () => {
-      const source = require('../../assets/models/facenet512.tflite');
+      // Not handed to fast-tflite as a module: in an Android release build that resolves to a
+      // resource name ("assets_models_facenet512"), which its loader cannot open (it expects a
+      // URL). expo-asset copies the file into the app's cache (or downloads it from Metro in
+      // development) and gives a file:// URL both platforms' loaders read.
+      const asset = await Asset.fromModule(require('../../assets/models/facenet512.tflite')).downloadAsync();
+      if (!asset.localUri) throw new Error('The face model file could not be found in the app.');
+      const source = { url: asset.localUri };
       if (Platform.OS === 'android') {
         try {
           return await loadTensorflowModel(source, ['android-gpu']);
