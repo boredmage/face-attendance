@@ -27,8 +27,10 @@ Three parts:
 
 ## Deploy to a VPS (behind an existing Caddy)
 
-The backend is served on `api.<domain>` and the dashboard on `dashboard.<domain>`. It needs Docker,
-DNS for both hostnames pointing at the server, a global Caddy container on the `web` network, and a
+The backend is served on `api.<domain>`, the dashboard on `dashboard.<domain>`, and a landing page
+on `<domain>` itself (served by the dashboard container: it links to the dashboard and offers the
+Android APK and the iPhone TestFlight). It needs Docker, DNS for the three hostnames pointing at the
+server, a global Caddy container on the `web` network, and a
 [Resend](https://resend.com) account for the confirmation emails: an API key
 (<https://resend.com/api-keys>, "Sending access" is enough) and a sending domain verified at
 <https://resend.com/domains>.
@@ -47,7 +49,7 @@ else in it changes. Without a terminal, pass them in the environment:
 keep working without confirming anything. Sign-up needs the current mobile app: older builds can
 still log in, but cannot create an account.
 
-Then add the two blocks it prints to the Caddyfile and reload Caddy:
+Then add the blocks it prints to the Caddyfile and reload Caddy:
 
 ```
 api.example.com {
@@ -56,10 +58,18 @@ api.example.com {
 dashboard.example.com {
     reverse_proxy face-attendance-dashboard:3000
 }
+example.com {
+    reverse_proxy face-attendance-dashboard:3000
+}
 ```
 
+The landing page's app links (`ANDROID_APK_URL`, `IOS_TESTFLIGHT_URL` in `.env`) are asked for
+during setup, and once on a server set up before the landing page existed. Change them any time with
+`./deploy.sh app-links`: it restarts the dashboard, no rebuild. An empty link shows "coming soon".
+On the root domain only `/` is the landing page; any other path redirects to the dashboard.
+
 Later: `./deploy.sh --pull` (update), `./deploy.sh rollback`, `./deploy.sh backup`, `./deploy.sh caddy`,
-`./deploy.sh seed` (demo data, empty database only), `./deploy.sh test-email <address>`,
+`./deploy.sh seed` (demo data, empty database only), `./deploy.sh test-email <address>`, `./deploy.sh app-links`,
 `./deploy.sh setup` (ask everything again), `./deploy.sh down`. Data lives in the
 `face-attendance-data` volume. Build the mobile app against `https://api.<domain>`.
 

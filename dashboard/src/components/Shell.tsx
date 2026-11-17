@@ -26,7 +26,7 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function Brand({ light }: { light?: boolean }) {
+export function Brand({ light, tagline = "Lecturer dashboard" }: { light?: boolean; tagline?: string }) {
   return (
     <div className="flex items-center gap-3">
       <div className={cx("flex h-9 w-9 items-center justify-center rounded-full text-sm font-bold", light ? "bg-white text-brand-600" : "bg-brand-600 text-white")}>
@@ -34,7 +34,7 @@ export function Brand({ light }: { light?: boolean }) {
       </div>
       <div className="leading-tight">
         <p className={cx("text-sm font-semibold", light ? "text-white" : "text-slate-900")}>Face Attendance</p>
-        <p className={cx("text-xs", light ? "text-brand-100" : "text-slate-500")}>Lecturer dashboard</p>
+        <p className={cx("text-xs", light ? "text-brand-100" : "text-slate-500")}>{tagline}</p>
       </div>
     </div>
   );

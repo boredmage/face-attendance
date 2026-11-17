@@ -7,6 +7,7 @@
 #   * face-attendance-api        FastAPI backend, SQLite + face photos in the
 #                                face-attendance-data volume      -> api.<domain>
 #   * face-attendance-dashboard  Next.js lecturer dashboard        -> dashboard.<domain>
+#                                and the public landing page      -> <domain>
 #
 # Usage:
 #   ./deploy.sh              # first run: ask for the domain and settings, then build + start;
@@ -16,6 +17,7 @@
 #   ./deploy.sh --logs       # after a successful deploy, tail the logs
 #   ./deploy.sh setup        # re-run the setup questions (rewrites .env, keeps JWT_SECRET)
 #   ./deploy.sh test-email you@example.com   # send a test message with this server's email settings
+#   ./deploy.sh app-links    # change the landing page's APK / TestFlight links (restart, no rebuild)
 #   ./deploy.sh caddy        # print the Caddyfile blocks for this domain
 #   ./deploy.sh seed         # load the demo data into an EMPTY database (demo logins, password123)
 #   ./deploy.sh backup       # copy the database + face photos to ./backups/<timestamp>.tar.gz
@@ -137,11 +139,41 @@ ask_sender() {
   done
   printf -v "$__var" '%s' "$__value"
 }
+# ask_link VAR "Prompt" [current]: a web address, or nothing. Enter keeps the current one, "-" removes it.
+ask_link() {
+  local __var="$1" __prompt="$2" __current="${3:-}" __value
+  while :; do
+    if [ -n "$__current" ]; then
+      ask __value "$__prompt (Enter keeps it, - removes it)" "$__current"
+    else
+      ask __value "$__prompt (Enter to skip)" ""
+    fi
+    __value="$(printf '%s' "$__value" | tr -d '[:space:]')"
+    case "$__value" in
+      -) __value=""; break ;;
+      ""|https://*|http://*) break ;;
+    esac
+    echo "  Enter a link starting with https://, or press Enter to skip."
+    [ -t 0 ] || die "Not a link: $__value"
+  done
+  printf -v "$__var" '%s' "$__value"
+}
+
+# ask_app_links APK_VAR TESTFLIGHT_VAR: the download links the landing page shows.
+ask_app_links() {
+  echo "    The landing page offers the phone app. Paste the links (an empty one shows \"coming soon\"):"
+  echo "      Android: a direct link to the .apk file (e.g. the EAS build's \"Install\" artifact)."
+  echo "      iPhone:  the public TestFlight link (https://testflight.apple.com/join/...)."
+  ask_link "$1" "Android APK download link" "$(env_val .env ANDROID_APK_URL)"
+  ask_link "$2" "iPhone TestFlight link" "$(env_val .env IOS_TESTFLIGHT_URL)"
+}
+
 backup_file() { [ -f "$1" ] && cp "$1" "$1.bak.$(date +%Y%m%d-%H%M%S)" && warn "Previous $1 kept as $1.bak.*"; return 0; }
 interactive() { [ -t 0 ] || [ "${DEPLOY_INTERACTIVE:-0}" = "1" ]; }
 
 api_host()  { strip_host "$(env_val .env PUBLIC_API_URL)"; }
 dash_host() { strip_host "$(env_val .env DASHBOARD_URL)"; }
+site_host() { strip_host "$(env_val .env SITE_URL)"; }
 
 print_caddy() {
   cat <<EOF
@@ -155,8 +187,12 @@ print_caddy() {
         $(dash_host) {
             reverse_proxy $WEB_CONTAINER:3000
         }
+        $(site_host) {
+            reverse_proxy $WEB_CONTAINER:3000
+        }
 
-    Both hostnames need DNS A/AAAA records pointing at this server.
+    The last one is the landing page ($(site_host) shows it; its other paths go to the dashboard).
+    All three hostnames need DNS A/AAAA records pointing at this server.
     Mobile app (EAS build): point it at https://$(api_host)
 
 EOF
@@ -166,14 +202,18 @@ EOF
 setup_env() {
   echo
   log "Setup: the site addresses and secrets (.env)"
-  echo "    The API is served on api.<domain> and the dashboard on dashboard.<domain>."
-  local domain api dash tz threshold jwt mail_key mail_from
+  echo "    The API is served on api.<domain>, the dashboard on dashboard.<domain>,"
+  echo "    and a landing page with the app downloads on <domain> itself."
+  local domain api dash site tz threshold jwt mail_key mail_from apk testflight
   ask_required domain "Base domain (without https://, e.g. example.com)" \
     "$(api_host | sed 's/^api\.//')"
   domain="$(strip_host "$domain")"
   ask api  "API hostname" "api.$domain"
   ask dash "Dashboard hostname" "dashboard.$domain"
-  api="$(strip_host "$api")"; dash="$(strip_host "$dash")"
+  site="$(site_host)"
+  ask site "Landing page hostname" "${site:-$domain}"
+  api="$(strip_host "$api")"; dash="$(strip_host "$dash")"; site="$(strip_host "${site:-$domain}")"
+  ask_app_links apk testflight
   ask tz "Time zone for statistics and CSV exports" "$(env_val .env DISPLAY_TIMEZONE || true)"
   tz="${tz:-Africa/Lagos}"
   ask threshold "Face match threshold (cosine distance, lower = stricter)" \
@@ -202,6 +242,12 @@ DASHBOARD_URL=https://$dash
 # Browser origins allowed to call the API (the dashboard), comma-separated
 CORS_ORIGINS=https://$dash
 
+# The landing page (on SITE_URL) and its app links. Read at start-up: after editing these,
+# restart with ./deploy.sh app-links (or: docker compose up -d dashboard). No rebuild needed.
+SITE_URL=https://$site
+ANDROID_APK_URL=$apk
+IOS_TESTFLIGHT_URL=$testflight
+
 # Signs login tokens. Changing it signs everyone out, including lecturer phones.
 JWT_SECRET=$jwt
 DISPLAY_TIMEZONE=$tz
@@ -219,7 +265,7 @@ WITH_DEEPFACE=false
 FACE_LEGACY=false
 EOF
   chmod 600 .env
-  log "Wrote .env (API https://$api, dashboard https://$dash, email from $mail_from)"
+  log "Wrote .env (API https://$api, dashboard https://$dash, landing page https://$site, email from $mail_from)"
   MAIL_NEW=1
 }
 
@@ -245,6 +291,26 @@ ensure_mail_env() {
   set_env EMAIL_FROM "$from"
   log "Saved the email settings to .env (sending from $from)"
   MAIL_NEW=1
+}
+
+# --- Landing page settings --------------------------------------------------------
+# A .env written before the landing page existed has no SITE_URL: it is the root of the dashboard's
+# domain. The app links are asked for once when there is a terminal; they can be added later too.
+ensure_site_env() {
+  local site apk testflight
+  site="$(dash_host | sed 's/^dashboard\.//')"
+  grep -q -E '^SITE_URL=' .env \
+    || printf '\n# The landing page (on SITE_URL) and its app links. Change the links with: ./deploy.sh app-links\n' >> .env
+  set_env SITE_URL "https://$site"
+  if interactive; then
+    echo
+    log "Landing page: https://$site shows the dashboard sign-in and the app downloads"
+    ask_app_links apk testflight
+  fi
+  set_env ANDROID_APK_URL "${apk:-}"
+  set_env IOS_TESTFLIGHT_URL "${testflight:-}"
+  log "Saved the landing page settings to .env"
+  SITE_NEW=1
 }
 
 env_ok() {
@@ -296,6 +362,20 @@ case "${1:-}" in
   caddy)
     env_ok || die "Not set up yet: run ./deploy.sh setup"
     print_caddy
+    exit 0
+    ;;
+  app-links)
+    env_ok || die "Not set up yet: run ./deploy.sh setup"
+    interactive || die "app-links needs a terminal to ask on. Or edit ANDROID_APK_URL / IOS_TESTFLIGHT_URL in .env, then: $COMPOSE up -d dashboard"
+    [ -n "$(env_val .env SITE_URL)" ] || set_env SITE_URL "https://$(dash_host | sed 's/^dashboard\.//')"
+    ask_app_links apk testflight
+    set_env ANDROID_APK_URL "$apk"
+    set_env IOS_TESTFLIGHT_URL "$testflight"
+    if docker ps --format '{{.Names}}' | grep -qx "$WEB_CONTAINER"; then
+      log "Restarting the dashboard with the new links..."
+      $COMPOSE up -d --no-build --no-deps dashboard
+    fi
+    log "Saved. The landing page: $(env_val .env SITE_URL)"
     exit 0
     ;;
   test-email)
@@ -387,6 +467,9 @@ fi
 # --- Email settings (a .env from before email confirmation does not have them) ---
 mail_ok || ensure_mail_env
 
+# --- Landing page (a .env from before it existed has no SITE_URL) -----------------
+[ -n "$(env_val .env SITE_URL)" ] || ensure_site_env
+
 # --- Preflight ----------------------------------------------------------------
 docker network inspect web >/dev/null 2>&1 \
   || die "Docker network 'web' does not exist. It is the network your global Caddy is on: docker network create web"
@@ -412,7 +495,19 @@ $COMPOSE up -d --remove-orphans
 # --- Wait for the site to answer ----------------------------------------------
 if wait_healthy; then
   $COMPOSE ps
-  [ "${FIRST_RUN:-0}" = "1" ] && print_caddy
+  if [ "${FIRST_RUN:-0}" = "1" ]; then
+    print_caddy
+  elif [ "${SITE_NEW:-0}" = "1" ]; then
+    echo
+    echo "    New: the landing page. Add this to the global Caddyfile and reload Caddy (and point DNS for"
+    echo "    $(site_host) at this server):"
+    echo
+    echo "        $(site_host) {"
+    echo "            reverse_proxy $WEB_CONTAINER:3000"
+    echo "        }"
+    echo
+  fi
+  log "Site:      $(env_val .env SITE_URL)"
   log "API:       $(env_val .env PUBLIC_API_URL)/health"
   log "Dashboard: $(env_val .env DASHBOARD_URL)"
   log "Email:     confirmation codes are sent from $(env_val .env EMAIL_FROM) through Resend"

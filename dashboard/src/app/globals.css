@@ -50,3 +50,36 @@ body {
 .animate-toast-in {
   animation: toast-in 180ms ease-out;
 }
+
+/* Landing page (/welcome): the scan line over the face, and rows arriving in the roster */
+@keyframes scan {
+  0%,
+  100% {
+    top: 15%;
+  }
+  50% {
+    top: 80%;
+  }
+}
+.animate-scan {
+  animation: scan 2.8s ease-in-out infinite;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise {
+  animation: rise 500ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-scan,
+  .animate-rise {
+    animation: none;
+  }
+}

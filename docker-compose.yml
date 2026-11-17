@@ -12,6 +12,9 @@
 #     dashboard.example.com {
 #         reverse_proxy face-attendance-dashboard:3000
 #     }
+#     example.com {          # the landing page, served by the dashboard container
+#         reverse_proxy face-attendance-dashboard:3000
+#     }
 #
 # Values like ${PUBLIC_API_URL} come from the .env file next to this one (written by deploy.sh,
 # template in .env.example). For local development use docker-compose.dev.yml instead.
@@ -60,11 +63,18 @@ services:
     image: face-attendance-dashboard
     container_name: face-attendance-dashboard
     restart: unless-stopped
+    environment:
+      # Read when the server starts, so changing them needs a restart, not a rebuild
+      # (./deploy.sh app-links). SITE_URL is the root domain, where the landing page is shown.
+      SITE_URL: ${SITE_URL:-}
+      DASHBOARD_URL: ${DASHBOARD_URL:-}
+      ANDROID_APK_URL: ${ANDROID_APK_URL:-}
+      IOS_TESTFLIGHT_URL: ${IOS_TESTFLIGHT_URL:-}
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - web   # Caddy reverse-proxies dashboard.<domain> to face-attendance-dashboard:3000
+      - web   # Caddy reverse-proxies dashboard.<domain> and <domain> to face-attendance-dashboard:3000
 
 volumes:
   # Fixed names so the data's location never depends on the project name or checkout path
