@@ -175,11 +175,12 @@ src/face/                       on-device recognition: TFLite model, crop, embed
 src/sync/                       sync manager, background task, useSyncStatus
 src/components/SyncBadge.tsx    sync state chip + details sheet (sync now, sign in again)
 src/context/AuthContext.tsx     role-aware session (student | lecturer), secure token storage
-src/navigation/AppNavigator.tsx signed-out (login, register, confirm email) | face setup | student tabs | lecturer mode
+src/navigation/AppNavigator.tsx signed-out (login, register, confirm email, reset password) | face setup | student tabs | lecturer mode
 src/components/FaceCamera.tsx   vision-camera + ML Kit (angles, eye-open, smile) + capture/compress
 src/components/FaceGuideOverlay.tsx  circular guide, green when a face is present
 src/components/CircularProgress.tsx  SVG attendance gauge
-src/screens/*.tsx               student screens (Login, Register, VerifyEmail, FaceIntro, EnrolFace, Home,
+src/screens/*.tsx               student screens (Login, Register, VerifyEmail, ForgotPassword, ResetPassword,
+                                FaceIntro, EnrolFace, Home,
                                 Courses, Catalog, CourseDetail, Lecturers, Profile)
 src/screens/lecturer/*.tsx      LecturerHome, TakeAttendance, SessionSummary
 ```

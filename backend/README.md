@@ -132,6 +132,9 @@ Auth (no token):
 | POST | `/auth/verification/resend` | `{verification_id}` → a new code for either role; 429 with `retry_after` when asked too soon |
 | POST | `/auth/lecturer/login` | `{email, password}` → JWT; with `device_id` (the app) also a refresh token |
 | POST | `/auth/refresh` | `{refresh_token}` → new access + refresh token (lecturer phones) |
+| POST | `/auth/password/forgot` | `{role, identifier}` (student: matric number or email; lecturer: email) → emails a reset code → `{reset_id, resend_in_seconds, code_minutes}` (202), the same answer whether or not an account matched |
+| POST | `/auth/password/resend` | `{reset_id}` → a new reset code; 429 with `retry_after` when asked too soon |
+| POST | `/auth/password/reset` | `{reset_id, code, new_password}` → 204; every earlier session is signed out |
 
 Tokens carry a role; a student token cannot call `/lecturer/*` and vice versa (403).
 
@@ -157,6 +160,21 @@ only); entering the code creates the account and signs it in (`app/verification.
   `EMAIL_FROM` to an address on a domain verified in Resend; left empty, Resend's test sender is
   used, which only delivers to the Resend account owner's own address. Check a server's settings
   with `python -m app.mailer you@example.com`.
+
+### Password reset
+
+`/auth/password/forgot` emails a 6-digit code to the account's address; `/auth/password/reset`
+takes the code and a new password (`app/password_reset.py`). Codes follow the confirmation rules
+above (`EMAIL_CODE_MINUTES`, `EMAIL_CODE_MAX_ATTEMPTS`, `EMAIL_RESEND_SECONDS`), and a request
+can be continued for `PASSWORD_RESET_MINUTES` (60).
+
+* The answer never tells whether an account exists: a request that matches nothing (or an account
+  without an email address) still gets a `reset_id`, no code is ever sent for it and none is
+  accepted, and emails go out after the response, so the timing is the same too.
+* A reset bumps the account's `token_version` (the `ver` claim in every access token), which
+  signs out every token issued before, and deletes a lecturer's refresh tokens: their phone asks
+  them to sign in again and keeps its unsynced queue. The owner is emailed that the password changed.
+* Students whose account has no email (created before email was required) cannot reset here.
 
 Student (`/student/*`, `/auth/student/me`):
 

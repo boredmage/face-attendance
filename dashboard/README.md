@@ -34,6 +34,7 @@ the image after changing it.
 |---|---|
 | `/login`, `/register` | Lecturer sign-in and sign-up (title, name, staff ID, email, department, faculty, phone, office, password) |
 | `/verify-email` | Enter the 6-digit code emailed after signing up (or after signing in to a sign-up that was never confirmed); send a new code, or go back to change the address. The account exists once the code is accepted |
+| `/forgot-password`, `/reset-password` | Forgotten password: enter the account's email, then the 6-digit code emailed to it and a new password (send a new code, or start again with another address). Signs out every earlier session, then back to `/login` |
 | `/` | Overview: KPI tiles, live-class card (refreshes every 5 s while you scan on your phone), attendance trend, average by course, weekday stats, students at risk (< 75%), recent classes. New lecturers get a 3-step getting-started card instead |
 | `/courses` | Course cards with stats, create-course modal, show-archived toggle |
 | `/courses/[id]` | Course KPIs, per-class trend, registered students (search, sort, status, face-enrolled, remove), classes, edit / archive / delete, attendance-register CSV export |
@@ -50,7 +51,7 @@ updates and a toast appears.
 ```
 src/
   app/
-    (auth)/            login, register + verify-email, split branding layout
+    (auth)/            login, register + verify-email, forgot/reset password, split branding layout
     (app)/             signed-in pages; layout redirects to /login without a session
   components/          Shell (sidebar, drawer, bell), ui primitives, charts, tables, course form, toast
   lib/

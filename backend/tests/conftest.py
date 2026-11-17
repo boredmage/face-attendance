@@ -30,10 +30,22 @@ def emailed_code(email: str) -> str:
     return next(code for to, code in reversed(SENT_CODES) if to == email.lower())
 
 
+# Every password reset code "emailed", oldest first: (address, code); and every "password changed" notice
+RESET_CODES: list[tuple[str, str]] = []
+PASSWORD_CHANGED: list[str] = []
+
+
+def emailed_reset_code(email: str) -> str:
+    """The latest password reset code sent to an address."""
+    return next(code for to, code in reversed(RESET_CODES) if to == email.lower())
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _capture_email():
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(mailer, "send_verification_code", lambda to, name, code: SENT_CODES.append((to, code)))
+        patch.setattr(mailer, "send_password_reset_code", lambda to, name, code: RESET_CODES.append((to, code)))
+        patch.setattr(mailer, "send_password_changed", lambda to, name: PASSWORD_CHANGED.append(to))
         yield
 
 

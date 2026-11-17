@@ -73,6 +73,35 @@ class ResendCode(BaseModel):
     verification_id: str = Field(..., min_length=20, max_length=64)
 
 
+class ForgotPassword(BaseModel):
+    role: Literal["student", "lecturer"]
+    # Students: matric number or email address. Lecturers: email address.
+    identifier: str = Field(..., min_length=3, max_length=120)
+
+
+class PasswordResetPending(BaseModel):
+    """Answer to a "forgot password" request, the same whether or not an account matched.
+
+    A code goes to the account's email address when one did; the client says so in those words.
+    """
+    reset_id: str
+    # Wait this long before asking for another code (0 = one can be requested now)
+    resend_in_seconds: int
+    # How long a code works after it is sent
+    code_minutes: int
+
+
+class ResendResetCode(BaseModel):
+    reset_id: str = Field(..., min_length=20, max_length=64)
+
+
+class ResetPassword(BaseModel):
+    reset_id: str = Field(..., min_length=20, max_length=64)
+    code: str = Field(..., min_length=1, max_length=12)
+    # Students need 6 characters, lecturers 8 (checked once the reset's role is known)
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(..., min_length=20, max_length=200)
 

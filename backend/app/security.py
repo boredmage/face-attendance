@@ -33,14 +33,15 @@ def verify_password(password: str, stored: str) -> bool:
     return hmac.compare_digest(digest.hex(), digest_hex)
 
 
-def create_access_token(user_id: int, role: str, device_id: str | None = None) -> str:
+def create_access_token(account: Student | Lecturer, role: str, device_id: str | None = None) -> str:
     """JWT for a student or a lecturer; `role` keeps one kind of token from opening the other's routes.
 
-    Tokens issued to a lecturer's attendance phone also carry its device id (`dev`), which the
-    sync endpoints require.
+    Tokens carry the account's `token_version` (`ver`): a password reset bumps it, and tokens with
+    an older one are refused. Tokens issued to a lecturer's attendance phone also carry its device
+    id (`dev`), which the sync endpoints require.
     """
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expire_minutes)
-    payload = {"sub": str(user_id), "role": role, "exp": expire}
+    payload = {"sub": str(account.id), "role": role, "exp": expire, "ver": account.token_version or 0}
     if device_id:
         payload["dev"] = device_id
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
@@ -119,8 +120,13 @@ def _payload(creds: HTTPAuthorizationCredentials | None, role: str) -> dict:
     return payload
 
 
-def _decode(creds: HTTPAuthorizationCredentials | None, role: str) -> int:
-    return int(_payload(creds, role)["sub"])
+PASSWORD_CHANGED = "Your password was changed. Sign in again."
+
+
+def _current_version(payload: dict, account: Student | Lecturer) -> bool:
+    """False for a token issued before the account's last password reset (tokens from before
+    versions existed count as version 0)."""
+    return payload.get("ver", 0) == (account.token_version or 0)
 
 
 def get_current_student(
@@ -128,9 +134,12 @@ def get_current_student(
     db: Session = Depends(get_db),
 ) -> Student:
     """Dependency: decode a student JWT from the Authorization header and load the student."""
-    student = db.get(Student, _decode(creds, "student"))
+    payload = _payload(creds, "student")
+    student = db.get(Student, int(payload["sub"]))
     if student is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Student no longer exists")
+    if not _current_version(payload, student):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, PASSWORD_CHANGED)
     return student
 
 
@@ -139,9 +148,12 @@ def get_current_lecturer(
     db: Session = Depends(get_db),
 ) -> Lecturer:
     """Dependency: decode a lecturer JWT and load the lecturer."""
-    lecturer = db.get(Lecturer, _decode(creds, "lecturer"))
+    payload = _payload(creds, "lecturer")
+    lecturer = db.get(Lecturer, int(payload["sub"]))
     if lecturer is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Lecturer no longer exists")
+    if not _current_version(payload, lecturer):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, PASSWORD_CHANGED)
     return lecturer
 
 
@@ -166,7 +178,8 @@ def get_current_device(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Sign in from the attendance app to sync")
     lecturer = db.get(Lecturer, int(payload["sub"]))
     device = db.get(Device, device_id)
-    if lecturer is None or device is None or device.lecturer_id != lecturer.id or not device_usable(device):
+    if (lecturer is None or device is None or device.lecturer_id != lecturer.id or not device_usable(device)
+            or not _current_version(payload, lecturer)):
         raise _signed_out()
     device.last_seen_at = utcnow()
     return DeviceContext(lecturer, device)

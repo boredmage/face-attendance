@@ -3,16 +3,16 @@
 Registering emails a 6-digit code and returns a PendingVerification; the account is created, and
 its first token issued, by /auth/{student,lecturer}/verify-email (see app/verification.py).
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import verification
+from .. import password_reset, verification
 from ..config import settings
 from ..database import get_db
 from ..models import Device, Lecturer, Student, utcnow
-from ..schemas import (LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate,
-                       PendingVerification, RefreshRequest, RefreshResult, ResendCode, StudentLogin, StudentOut,
+from ..schemas import (ForgotPassword, LecturerLogin, LecturerMe, LecturerRegister, LecturerToken, LecturerUpdate,
+                       PasswordResetPending, PendingVerification, RefreshRequest, ResendResetCode, ResetPassword, RefreshResult, ResendCode, StudentLogin, StudentOut,
                        StudentRegister, StudentToken, VerifyEmail)
 from ..security import (create_access_token, get_current_lecturer, get_current_student, hash_password,
                         issue_refresh_token, rotate_refresh_token, verify_password)
@@ -97,7 +97,7 @@ def verify_student_email(body: VerifyEmail, db: Session = Depends(get_db)):
     db.delete(pending)
     _commit_account(db)
     db.refresh(student)
-    return StudentToken(access_token=create_access_token(student.id, "student"), student=student_out(student))
+    return StudentToken(access_token=create_access_token(student, "student"), student=student_out(student))
 
 
 @router.post("/student/login", response_model=StudentToken)
@@ -110,7 +110,7 @@ def login_student(body: StudentLogin, db: Session = Depends(get_db)):
             return verification.unconfirmed_response(pending, "Confirm your email to finish creating your account.")
     if student is None or not verify_password(body.password, student.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid matric number or password")
-    return StudentToken(access_token=create_access_token(student.id, "student"), student=student_out(student))
+    return StudentToken(access_token=create_access_token(student, "student"), student=student_out(student))
 
 
 @router.get("/student/me", response_model=StudentOut)
@@ -158,13 +158,32 @@ def verify_lecturer_email(body: VerifyEmail, db: Session = Depends(get_db)):
     db.delete(pending)
     _commit_account(db)
     db.refresh(lecturer)
-    return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer"), lecturer=lecturer_out(lecturer))
+    return LecturerToken(access_token=create_access_token(lecturer, "lecturer"), lecturer=lecturer_out(lecturer))
 
 
 @router.post("/verification/resend", response_model=PendingVerification)
 def resend_verification_code(body: ResendCode, db: Session = Depends(get_db)):
     """Email a new code for a sign-up of either role. Answers 429 (with `retry_after` seconds) when asked too soon."""
     return verification.resend(db, body.verification_id)
+
+
+# ---------- Forgotten passwords (both roles; see app/password_reset.py) ----------
+@router.post("/password/forgot", response_model=PasswordResetPending, status_code=status.HTTP_202_ACCEPTED)
+def forgot_password(body: ForgotPassword, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Email a reset code to the account `identifier` names. Answers the same whether or not one exists."""
+    return password_reset.request(db, background, body.role, body.identifier)
+
+
+@router.post("/password/resend", response_model=PasswordResetPending)
+def resend_password_code(body: ResendResetCode, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Email a new reset code. Answers 429 (with `retry_after` seconds) when asked too soon."""
+    return password_reset.resend(db, background, body.reset_id)
+
+
+@router.post("/password/reset", status_code=status.HTTP_204_NO_CONTENT)
+def reset_password(body: ResetPassword, background: BackgroundTasks, db: Session = Depends(get_db)):
+    """Set a new password with the emailed code. Every earlier session is signed out; sign in again."""
+    password_reset.reset(db, background, body.reset_id, body.code, body.new_password)
 
 
 @router.post("/lecturer/login", response_model=LecturerToken)
@@ -182,11 +201,11 @@ def login_lecturer(body: LecturerLogin, db: Session = Depends(get_db)):
     if lecturer is None or not verify_password(body.password, lecturer.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid email or password")
     if not body.device_id:  # dashboard
-        return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer"), lecturer=lecturer_out(lecturer))
+        return LecturerToken(access_token=create_access_token(lecturer, "lecturer"), lecturer=lecturer_out(lecturer))
     device = _activate_device(db, lecturer, body)
     refresh = issue_refresh_token(db, device)
     db.commit()
-    return LecturerToken(access_token=create_access_token(lecturer.id, "lecturer", device.id),
+    return LecturerToken(access_token=create_access_token(lecturer, "lecturer", device.id),
                          lecturer=lecturer_out(lecturer), refresh_token=refresh)
 
 
@@ -213,7 +232,7 @@ def _activate_device(db: Session, lecturer: Lecturer, body: LecturerLogin) -> De
 def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
     """New access token for a lecturer's device. Refresh tokens are single use and rotate on every call."""
     device, new_refresh = rotate_refresh_token(db, body.refresh_token)
-    return RefreshResult(access_token=create_access_token(device.lecturer_id, "lecturer", device.id),
+    return RefreshResult(access_token=create_access_token(db.get(Lecturer, device.lecturer_id), "lecturer", device.id),
                          refresh_token=new_refresh, device_active=device.revoked_at is None)
 
 

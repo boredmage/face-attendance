@@ -15,6 +15,7 @@ import type {
   JoinResult,
   Lecturer,
   LecturerToken,
+  PasswordResetPending,
   PendingVerification,
   Student,
   StudentDashboard,
@@ -28,6 +29,21 @@ function imagePart(uri: string, name = 'photo.jpg') {
   // React Native's FormData accepts { uri, name, type } objects for file uploads
   return { uri, name, type: 'image/jpeg' } as unknown as Blob;
 }
+
+/** Forgotten passwords, for either role (the server's /auth/password/*). */
+export const passwordApi = {
+  /** Students: matric number or email. Lecturers: email. Emails a code if an account matches. */
+  async forgot(role: 'student' | 'lecturer', identifier: string): Promise<PasswordResetPending> {
+    return (await api.post<PasswordResetPending>('/auth/password/forgot', { role, identifier: identifier.trim() })).data;
+  },
+  async resendCode(resetId: string): Promise<PasswordResetPending> {
+    return (await api.post<PasswordResetPending>('/auth/password/resend', { reset_id: resetId })).data;
+  },
+  /** Sets the new password. Every earlier session is signed out: the person signs in again. */
+  async reset(resetId: string, code: string, newPassword: string): Promise<void> {
+    await api.post('/auth/password/reset', { reset_id: resetId, code, new_password: newPassword });
+  },
+};
 
 export const studentApi = {
   /** Emails a confirmation code; the account is created by `verifyEmail`. */

@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     email_resend_seconds: int = 60
     # An unconfirmed sign-up is forgotten after this long
     pending_registration_hours: int = 24
+    # A password reset request (and "send a new code" on it) works for this long; each code still
+    # only lasts `email_code_minutes`
+    password_reset_minutes: int = 60
 
 
 settings = Settings()

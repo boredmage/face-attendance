@@ -100,6 +100,51 @@ def send_verification_code(to: str, name: str, code: str) -> None:
     send_email(to, subject, text, html_body)
 
 
+def send_password_reset_code(to: str, name: str, code: str) -> None:
+    """The 6-digit code that lets someone who forgot their password choose a new one."""
+    minutes = settings.email_code_minutes
+    first_name = (name.split() or ["there"])[0]
+    subject = f"{code} is your {APP_NAME} password reset code"
+    text = (
+        f"Hello {first_name},\n\n"
+        f"Your {APP_NAME} password reset code is: {code}\n\n"
+        f"Enter it where you asked to reset your password, then choose a new one. The code works for {minutes} minutes.\n\n"
+        "If you did not ask to reset your password, you can ignore this email: your password stays as it is.\n"
+    )
+    html_body = f"""\
+<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1b3a5c">{APP_NAME}</p>
+  <h1 style="margin:0 0 16px;font-size:20px;font-weight:600">Reset your password</h1>
+  <p style="margin:0 0 16px;font-size:15px;line-height:1.5">Hello {html.escape(first_name)}, enter this code where you asked to reset your password:</p>
+  <p style="margin:0 0 16px;padding:16px;border-radius:12px;background:#eef3f9;color:#1b3a5c;font-size:32px;font-weight:700;letter-spacing:8px;text-align:center">{code}</p>
+  <p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#475569">The code works for {minutes} minutes.</p>
+  <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b">If you did not ask to reset your password, you can ignore this email: your password stays as it is.</p>
+</div>
+"""
+    send_email(to, subject, text, html_body)
+
+
+def send_password_changed(to: str, name: str) -> None:
+    """Tells the account's owner their password was just reset, in case it was not them."""
+    first_name = (name.split() or ["there"])[0]
+    subject = f"Your {APP_NAME} password was changed"
+    text = (
+        f"Hello {first_name},\n\n"
+        f"The password for your {APP_NAME} account was just reset, and every device signed in to it was signed out.\n\n"
+        "If this was you, there is nothing more to do. If it was not, reset your password again straight away "
+        "and tell your department.\n"
+    )
+    html_body = f"""\
+<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#0f172a">
+  <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1b3a5c">{APP_NAME}</p>
+  <h1 style="margin:0 0 16px;font-size:20px;font-weight:600">Your password was changed</h1>
+  <p style="margin:0 0 16px;font-size:15px;line-height:1.5">Hello {html.escape(first_name)}, the password for your account was just reset, and every device signed in to it was signed out.</p>
+  <p style="margin:0;font-size:13px;line-height:1.5;color:#64748b">If this was you, there is nothing more to do. If it was not, reset your password again straight away and tell your department.</p>
+</div>
+"""
+    send_email(to, subject, text, html_body)
+
+
 def _main() -> int:
     if len(sys.argv) != 2 or "@" not in sys.argv[1]:
         print("usage: python -m app.mailer you@example.com", file=sys.stderr)

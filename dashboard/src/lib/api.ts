@@ -43,6 +43,18 @@ export interface PendingVerification {
   code_minutes: number;
 }
 
+/**
+ * A "forgot password" request. The server answers the same whether or not an account matched, so
+ * pages say a code was sent *if* an account uses the address.
+ */
+export interface PasswordResetPending {
+  reset_id: string;
+  /** Seconds to wait before another code may be requested (0 = now) */
+  resend_in_seconds: number;
+  /** Minutes a code works after it is sent */
+  code_minutes: number;
+}
+
 export interface LecturerRegister {
   title?: string | null;
   name: string;
@@ -352,6 +364,14 @@ export const api = {
     request<LecturerToken>("/auth/lecturer/verify-email", json("POST", { verification_id: verificationId, code })),
   resendCode: (verificationId: string) =>
     request<PendingVerification>("/auth/verification/resend", json("POST", { verification_id: verificationId })),
+  /** Emails a reset code to the lecturer account using `email`, if there is one. */
+  forgotPassword: (email: string) =>
+    request<PasswordResetPending>("/auth/password/forgot", json("POST", { role: "lecturer", identifier: email.trim() })),
+  resendResetCode: (resetId: string) =>
+    request<PasswordResetPending>("/auth/password/resend", json("POST", { reset_id: resetId })),
+  /** Sets the new password; every earlier session is signed out, so the lecturer signs in again. */
+  resetPassword: (resetId: string, code: string, newPassword: string) =>
+    request<void>("/auth/password/reset", json("POST", { reset_id: resetId, code, new_password: newPassword })),
   me: () => request<LecturerMe>("/auth/lecturer/me"),
   updateMe: (body: LecturerUpdate) => request<LecturerMe>("/auth/lecturer/me", json("PATCH", body)),
 

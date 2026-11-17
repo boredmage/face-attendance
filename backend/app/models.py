@@ -42,6 +42,8 @@ class Student(Base):
     # Every enrolment photo (frontal first), kept so faces can be re-embedded if the model changes
     face_image_paths: Mapped[list | None] = mapped_column(JSON, nullable=True)
     face_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Carried in every access token ("ver"); a password reset bumps it, so earlier tokens stop working
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Bumped whenever anything the lecturer's device caches changes (name, face): drives sync pulls
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
@@ -69,6 +71,8 @@ class Lecturer(Base):
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
     office: Mapped[str | None] = mapped_column(String(120), nullable=True)
     password_hash: Mapped[str] = mapped_column(String(256))
+    # Carried in every access token ("ver"); a password reset bumps it, so earlier tokens stop working
+    token_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
     courses: Mapped[list[Course]] = relationship(back_populates="lecturer")
@@ -98,6 +102,29 @@ class PendingRegistration(Base):
     login_key: Mapped[str] = mapped_column(String(120), index=True)
     # The cleaned registration fields plus password_hash: the columns of the account to create
     payload: Mapped[dict] = mapped_column(JSON)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    code_sent_at: Mapped[datetime] = mapped_column(DateTime)
+    code_expires_at: Mapped[datetime] = mapped_column(DateTime)
+    # Codes tried against the current code (a new code starts again from 0)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
+class PasswordReset(Base):
+    """A "forgot password" request: a 6-digit code was emailed to the account's address.
+
+    `id` is the unguessable handle the client presents with the code. A request that matched no
+    account (or one without an email address) gets a row too, with `account_id` None and no email
+    sent, so the answers to a request never tell whether an account exists. One row per account:
+    asking again replaces it.
+    """
+    __tablename__ = "password_resets"
+    __table_args__ = (UniqueConstraint("role", "account_id"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16))  # student | lecturer
+    account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     code_hash: Mapped[str] = mapped_column(String(64))
     code_sent_at: Mapped[datetime] = mapped_column(DateTime)
     code_expires_at: Mapped[datetime] = mapped_column(DateTime)

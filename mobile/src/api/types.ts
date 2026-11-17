@@ -48,6 +48,18 @@ export interface LecturerToken {
  * a token: the account is created by `studentApi.verifyEmail`. Logging in to an unconfirmed
  * sign-up fails with a 403 that carries the same object (see `pendingVerification` in client.ts).
  */
+/**
+ * A "forgot password" request. The server answers the same whether or not an account matched, so
+ * the app says a code was sent *if* an account matches.
+ */
+export interface PasswordResetPending {
+  reset_id: string;
+  /** Seconds to wait before another code may be requested (0 = now) */
+  resend_in_seconds: number;
+  /** Minutes a code works after it is sent */
+  code_minutes: number;
+}
+
 export interface PendingVerification {
   verification_id: string;
   email: string;

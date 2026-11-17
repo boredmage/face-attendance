@@ -4,10 +4,10 @@
  * Students sign in with matric number + password (or create an account). Lecturers sign in with
  * the email + password they registered on the web dashboard; in the app they can only take attendance.
  */
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Alert, Button, Card, Spinner, Tabs } from 'heroui-native';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 
 import { errorMessage, pendingVerification } from '@/api/client';
@@ -19,6 +19,13 @@ type Role = 'student' | 'lecturer';
 
 export function LoginScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AuthStackParamList>>();
+  const { params } = useRoute<RouteProp<AuthStackParamList, 'Login'>>();
+  // Shown until the next attempt to log in, or a switch of tab
+  const [notice, setNotice] = useState<string | null>(params?.notice ?? null);
+  // Login is already in the stack when a password reset returns to it: the notice arrives as new params
+  useEffect(() => {
+    if (params?.notice) setNotice(params.notice);
+  }, [params?.notice]);
   const { loginStudent, loginLecturer } = useAuth();
   const [role, setRole] = useState<Role>('student');
   const [identifier, setIdentifier] = useState('');
@@ -30,6 +37,12 @@ export function LoginScreen() {
     setRole(r as Role);
     setIdentifier('');
     setError(null);
+    setNotice(null);
+  };
+
+  const forgotPassword = () => {
+    setError(null);
+    navigation.navigate('ForgotPassword', { role, identifier: identifier.trim() || undefined });
   };
 
   const submit = async () => {
@@ -38,6 +51,7 @@ export function LoginScreen() {
       return;
     }
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
       // On success AuthProvider updates the session and AppNavigator switches screens
@@ -119,6 +133,15 @@ export function LoginScreen() {
               onSubmitEditing={submit}
             />
 
+            {notice ? (
+              <Alert status="success" className="mb-4">
+                <Alert.Indicator />
+                <Alert.Content>
+                  <Alert.Title>{notice}</Alert.Title>
+                </Alert.Content>
+              </Alert>
+            ) : null}
+
             {error ? (
               <Alert status="danger" className="mb-4">
                 <Alert.Indicator />
@@ -131,6 +154,13 @@ export function LoginScreen() {
             <Button size="lg" onPress={submit} isDisabled={loading}>
               {loading ? <Spinner color="white" /> : role === 'student' ? 'Log in' : 'Log in to take attendance'}
             </Button>
+
+            <View className="mt-4 flex-row items-center justify-center gap-1">
+              <Text className="text-sm text-muted">Forgot your password?</Text>
+              <Button variant="ghost" size="sm" onPress={forgotPassword}>
+                Reset it
+              </Button>
+            </View>
 
             {role === 'student' ? (
               <View className="mt-4 flex-row items-center justify-center gap-1">

@@ -1,6 +1,6 @@
 /**
  * Root navigation, chosen by auth state:
- *   - signed out:                     Login | Register | VerifyEmail
+ *   - signed out:                     Login | Register | VerifyEmail | ForgotPassword | ResetPassword
  *   - student without an enrolled face: FaceIntro -> EnrolFace (mandatory, nothing else reachable)
  *   - student:                        bottom tabs (Home, Courses, Lecturers, Profile) + CourseDetail / Catalog / EnrolFace on top
  *   - lecturer:                       attendance-taking only (course list -> scanner -> summary)
@@ -20,9 +20,11 @@ import { EnrolFaceScreen } from '@/screens/EnrolFaceScreen';
 import { FaceIntroScreen } from '@/screens/FaceIntroScreen';
 import { HomeScreen } from '@/screens/HomeScreen';
 import { LecturersScreen } from '@/screens/LecturersScreen';
+import { ForgotPasswordScreen } from '@/screens/ForgotPasswordScreen';
 import { LoginScreen } from '@/screens/LoginScreen';
 import { ProfileScreen } from '@/screens/ProfileScreen';
 import { RegisterScreen } from '@/screens/RegisterScreen';
+import { ResetPasswordScreen } from '@/screens/ResetPasswordScreen';
 import { VerifyEmailScreen } from '@/screens/VerifyEmailScreen';
 import { LecturerHomeScreen } from '@/screens/lecturer/LecturerHomeScreen';
 import { SessionSummaryScreen } from '@/screens/lecturer/SessionSummaryScreen';
@@ -93,6 +95,8 @@ function Navigator() {
         <AuthStack.Screen name="Login" component={LoginScreen} />
         <AuthStack.Screen name="Register" component={RegisterScreen} />
         <AuthStack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
+        <AuthStack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+        <AuthStack.Screen name="ResetPassword" component={ResetPasswordScreen} />
       </AuthStack.Navigator>
     );
   }
